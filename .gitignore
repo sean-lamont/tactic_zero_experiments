@@ -1,0 +1,13 @@
+*.pk
+*.json
+!dataset.json
+!include_probability.json
+!typed_database.json
+!polished_def_dict.json
+
+model_checkpoints
+
+__pycache__
+
+.idea
+
