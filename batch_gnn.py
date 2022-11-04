@@ -196,6 +196,114 @@ def plot_losses(train_loss, val_loss):
 
 
 
+
+
+
+
+
+
+
+#define setup for separate premise and goal GNNs
+
+def loss_2(graph_net_1, graph_net_2, batch, fc):#, F_p, F_i, F_o, F_x, F_c, conv1, conv2, num_iterations):
+
+    g0_embedding = graph_net_1(batch.x_t.to(device), batch.edge_index_t.to(device), batch.x_t_batch.to(device))
+
+    g1_embedding = graph_net_2(batch.x_s.to(device), batch.edge_index_s.to(device), batch.x_s_batch.to(device))
+
+    preds = fc(torch.cat([g0_embedding, g1_embedding], axis=1))
+
+    eps = 1e-6
+
+    preds = torch.clip(preds, eps, 1-eps)
+
+    return binary_loss(torch.flatten(preds), torch.LongTensor(batch.y).to(device))
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+from tqdm import tqdm
+
+def accuracy_2(graph_net_1, graph_net_2, batch, fc):
+
+    g0_embedding = graph_net_1(batch.x_t.to(device), batch.edge_index_t.to(device),batch.x_t_batch.to(device))
+
+    g1_embedding = graph_net_2(batch.x_s.to(device), batch.edge_index_s.to(device),batch.x_s_batch.to(device))
+
+    preds = fc(torch.cat([g0_embedding, g1_embedding], axis=1))
+
+    preds = torch.flatten(preds)
+
+    preds = (preds>0.5).long()
+
+    return torch.sum(preds == torch.LongTensor(batch.y).to(device)) / len(batch.y)
+
+
+def run_2(step_size, decay_rate, num_epochs, batch_size, embedding_dim, graph_iterations, save=False):
+
+    loader = DataLoader(new_train, batch_size=batch_size, follow_batch=['x_s', 'x_t'])
+
+    val_loader = iter(DataLoader(new_val, batch_size=2048, follow_batch=['x_s', 'x_t']))
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    graph_net_1 = inner_embedding_network.message_passing_gnn_(len(tokens), embedding_dim, graph_iterations, device)
+
+    graph_net_2 = inner_embedding_network.message_passing_gnn_(len(tokens), embedding_dim, graph_iterations, device)
+
+    fc = inner_embedding_network.F_c_module_(embedding_dim * 8).to(device)
+
+    optimiser_gnn_1 = torch.optim.Adam(list(graph_net_1.parameters()), lr=step_size, weight_decay=decay_rate)
+    optimiser_gnn_2 = torch.optim.Adam(list(graph_net_2.parameters()), lr=step_size, weight_decay=decay_rate)
+
+    optimiser_fc = torch.optim.Adam(list(fc.parameters()), lr=step_size, weight_decay=decay_rate)
+
+    training_losses = []
+
+    val_losses = []
+
+    for j in range(num_epochs):
+        for i, batch in tqdm(enumerate(loader)):
+
+            optimiser_fc.zero_grad()
+
+            optimiser_gnn_1.zero_grad()
+            optimiser_gnn_2.zero_grad()
+
+            loss_val = loss_2(graph_net_1,graph_net_2, batch, fc)#, fp, fi, fo, fx, fc,conv1,conv2, graph_iterations)
+
+            loss_val.backward()
+
+            optimiser_gnn_1.step()
+            optimiser_gnn_2.step()
+
+            optimiser_fc.step()
+
+
+            training_losses.append(loss_val.detach() / batch_size)
+
+            if i % 100 == 0:
+
+                validation_loss = accuracy_2(graph_net_1, graph_net_2, next(val_loader), fc)#, fp, fi, fo, fx, fc,conv1,conv2, graph_iterations)
+
+                val_losses.append((validation_loss.detach(), j, i))
+
+                val_loader = iter(DataLoader(new_val, batch_size=2048, follow_batch=['x_s', 'x_t']))
+
+                print ("Curr training loss avg: {}".format(sum(training_losses[-100:]) / len(training_losses[-100:])))
+
+                print ("Val acc: {}".format(validation_loss.detach()))
+
+    #only save encoder for now
+    if save == True:
+        torch.save(graph_net, "model_checkpoints/gnn_encoder_latest_2")
+
+
+    return training_losses, val_losses
+
+
+#run_2(1e-3, 0, 20, 1024, 64, 2, False)
+
+
 #todo add test set evaluation
 
 ##########################################
