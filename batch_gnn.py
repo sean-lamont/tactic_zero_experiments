@@ -295,7 +295,8 @@ def run_2(step_size, decay_rate, num_epochs, batch_size, embedding_dim, graph_it
 
     #only save encoder for now
     if save == True:
-        torch.save(graph_net, "model_checkpoints/gnn_encoder_latest_2")
+        torch.save(graph_net_1, "model_checkpoints/gnn_encoder_latest_1")
+        torch.save(graph_net_2, "model_checkpoints/gnn_encoder_latest_2")
 
 
     return training_losses, val_losses
