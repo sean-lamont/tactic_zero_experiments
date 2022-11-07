@@ -177,7 +177,7 @@ class message_passing_gnn_induct(nn.Module):
 
         nodes = self.conv1(nodes)
 
-#        nodes = nodes.squeeze(-1)
+        nodes = nodes.squeeze(-1)
 
 #        g_embedding = torch.cat([gmp(nodes, batch), gap(nodes, batch)], dim=1)  # gmp(nodes, batch)
         #return embeddings for each node which is a variable
