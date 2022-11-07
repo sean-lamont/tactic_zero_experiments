@@ -140,6 +140,48 @@ class message_passing_gnn_(nn.Module):
         g_embedding = torch.cat([gmp(nodes, batch), gap(nodes, batch)], dim=1)  # gmp(nodes, batch)
         return g_embedding
 
+#define GNN for induction (term) network
+
+class message_passing_gnn_induct(nn.Module):
+
+    def __init__(self, input_shape, embedding_dim, num_iterations, device):
+        super(message_passing_gnn_induct, self).__init__()
+
+        self.device = device
+
+        self.num_iterations = num_iterations
+
+        self.initial_encoder = F_x_module_(input_shape, embedding_dim).to(device)
+
+        self.parent_agg = Parent_Aggregation(embedding_dim, embedding_dim).to(device)
+
+        self.child_agg = Child_Aggregation(embedding_dim, embedding_dim).to(device)
+
+        self.final_agg = Final_Agg(embedding_dim).to(device)
+
+        self.conv1 = torch.nn.Conv1d(embedding_dim, embedding_dim * 2, 1, stride=1).to(device)
+
+    def forward(self, nodes, edges, batch=None):
+        nodes = self.initial_encoder(nodes)
+
+        for t in range(self.num_iterations):
+            fi_sum = self.parent_agg(nodes, edges)
+
+            fo_sum = self.child_agg(nodes, edges)
+
+            node_update = self.final_agg(torch.cat([nodes, fi_sum, fo_sum], axis=1).to(self.device))
+
+            nodes = nodes + node_update
+
+        nodes = nodes.unsqueeze(-1)
+
+        nodes = self.conv1(nodes)
+
+#        nodes = nodes.squeeze(-1)
+
+#        g_embedding = torch.cat([gmp(nodes, batch), gap(nodes, batch)], dim=1)  # gmp(nodes, batch)
+        #return embeddings for each node which is a variable
+        return nodes
 
 # additional networks for meta graph learning
 

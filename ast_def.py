@@ -283,3 +283,6 @@ def rename(ast):
 
 def goal_to_graph(polished_goal):
     return rename(merge_leaves(process_lambdas(tokens_to_ast(polished_to_tokens_2(polished_goal)))))
+
+def goal_to_graph_labelled(polished_goal):
+    return merge_leaves(process_lambdas(tokens_to_ast(polished_to_tokens_2(polished_goal))))
