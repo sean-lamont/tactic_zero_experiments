@@ -297,6 +297,20 @@ def generate_gnn_data(data, train_ratio, val_ratio, rand, data_dir):
         return list(set(result))
 
 
+
+    def nodes_list_to_senders_receivers_labelled(node_list):
+        senders = []
+        receivers = []
+        edge_labels = []
+        for i, node in enumerate(node_list):
+            for j, child in enumerate(node.children):
+                senders.append(i)
+                receivers.append(node_list.index(child))
+                edge_labels.append(j)
+        return senders, receivers, edge_labels
+
+
+
     def graph_to_torch(g):
         node_list = nodes_list(g, result=[])
         senders, receivers = nodes_list_to_senders_receivers(node_list)
@@ -312,13 +326,58 @@ def generate_gnn_data(data, train_ratio, val_ratio, rand, data_dir):
 
         return Data(x=nodes, edge_index=edges)
 
+    def sp_to_torch(sparse):
+        coo = sparse.tocoo()
+
+        values = coo.data
+        indices = np.vstack((coo.row, coo.col))
+
+        i = torch.LongTensor(indices)
+        v = torch.FloatTensor(values)
+        shape = coo.shape
+
+        return torch.sparse.FloatTensor(i, v, torch.Size(shape))  # .to_dense()
+
+
+    def graph_to_torch_labelled(g):
+        node_list = nodes_list(g, result=[])
+        #    senders, receivers = nodes_list_to_senders_receivers(node_list)
+        senders, receivers, edge_labels = nodes_list_to_senders_receivers_labelled(node_list)
+
+
+
+        # define labels before renaming to keep original variables for induction
+        labels = [x.node.value for x in node_list]
+
+        # rename variables to be constant
+        for node in node_list:
+            if node.node.value[0] == 'V':
+                if node.children != []:
+                    node.node.value = "VARFUNC"
+                else:
+                    node.node.value = "VAR"
+
+        # get the one hot encoding from enc
+        t_f = lambda x: np.array([x.node.value])
+
+        node_features = list(map(t_f, node_list))
+
+        node_features = enc.transform(node_features)
+
+        edges = torch.tensor([senders, receivers], dtype=torch.long)
+
+        nodes = sp_to_torch(node_features)
+
+        return Data(x=nodes, edge_index=edges, edge_attr=torch.Tensor(edge_labels), labels=labels)
+
+
 
     polished_goals = [full_db[k][2] for k in full_db.keys()]
 
     torch_graph_dict = {}
 
     for goal in tqdm(polished_goals):
-        torch_graph_dict[goal] = graph_to_torch(goal_to_graph(goal))
+        torch_graph_dict[goal] = graph_to_torch_labelled(goal_to_graph_labelled(goal))
 
     one_hot_dict = {}
 

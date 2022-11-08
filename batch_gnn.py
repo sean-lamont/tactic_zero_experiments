@@ -57,13 +57,15 @@ tokens.append("UNKNOWN")
 
 
 class LinkData(Data):
-    def __init__(self, edge_index_s=None, x_s=None, edge_index_t=None, x_t=None, 
+    def __init__(self, edge_index_s=None, x_s=None, edge_index_t=None, x_t=None, edge_attr_s=None, edge_attr_t = None,
                  y=None, x_s_one_hot=None, x_t_one_hot=None):
         super().__init__()
         self.edge_index_s = edge_index_s
         self.x_s = x_s
         self.edge_index_t = edge_index_t
         self.x_t = x_t
+        self.edge_attr_s = edge_attr_s
+        self.edge_attr_t = edge_attr_t
         self.x_s_one_hot=x_s_one_hot
         self.x_t_one_hot=x_t_one_hot
         self.y = y
@@ -76,13 +78,31 @@ class LinkData(Data):
         else:
             return super().__inc__(key, value, *args, **kwargs)
 
+# new_train = []
+#
+# for (x1, x2, y) in train:
+#     x1_graph = torch_graph_dict[x1]
+#     x2_graph = torch_graph_dict[x2]
+#
+#     new_train.append(LinkData(edge_index_s=x2_graph.edge_index, x_s=x2_graph.x, edge_index_t=x1_graph.edge_index, x_t=x1_graph.x, y=y, x_s_one_hot=one_hot_dict[x2],  x_t_one_hot=one_hot_dict[x1]))
+#
+# new_val = []
+#
+# for (x1, x2, y) in val:
+#     x1_graph = torch_graph_dict[x1]
+#     x2_graph = torch_graph_dict[x2]
+#
+#     new_val.append(LinkData(edge_index_s=x2_graph.edge_index, x_s=x2_graph.x, edge_index_t=x1_graph.edge_index, x_t=x1_graph.x, y=y, x_s_one_hot=one_hot_dict[x2],  x_t_one_hot=one_hot_dict[x1]))
+
+
+#edge labelled data
 new_train = []
 
 for (x1, x2, y) in train:
     x1_graph = torch_graph_dict[x1]
     x2_graph = torch_graph_dict[x2]
-    
-    new_train.append(LinkData(edge_index_s=x2_graph.edge_index, x_s=x2_graph.x, edge_index_t=x1_graph.edge_index, x_t=x1_graph.x, y=y, x_s_one_hot=one_hot_dict[x2],  x_t_one_hot=one_hot_dict[x1]))
+
+    new_train.append(LinkData(edge_index_s=x2_graph.edge_index, x_s=x2_graph.x, edge_index_t=x1_graph.edge_index, x_t=x1_graph.x, edge_attr_t=x1_graph.edge_attr, edge_attr_s=x2_graph.edge_attr, y=y, x_s_one_hot=one_hot_dict[x2],  x_t_one_hot=one_hot_dict[x1]))
 
 new_val = []
 
@@ -90,7 +110,8 @@ for (x1, x2, y) in val:
     x1_graph = torch_graph_dict[x1]
     x2_graph = torch_graph_dict[x2]
 
-    new_val.append(LinkData(edge_index_s=x2_graph.edge_index, x_s=x2_graph.x, edge_index_t=x1_graph.edge_index, x_t=x1_graph.x, y=y, x_s_one_hot=one_hot_dict[x2],  x_t_one_hot=one_hot_dict[x1]))
+    new_val.append(LinkData(edge_index_s=x2_graph.edge_index, x_s=x2_graph.x, edge_index_t=x1_graph.edge_index, x_t=x1_graph.x, edge_attr_t=x1_graph.edge_attr, edge_attr_s=x2_graph.edge_attr, y=y, x_s_one_hot=one_hot_dict[x2],  x_t_one_hot=one_hot_dict[x1]))
+
 
 def binary_loss(preds, targets):
     return -1. * torch.sum(targets * torch.log(preds) + (1 - targets) * torch.log((1. - preds)))
@@ -302,8 +323,133 @@ def run_2(step_size, decay_rate, num_epochs, batch_size, embedding_dim, graph_it
     return training_losses, val_losses
 
 
+
+
+
 #run_2(1e-3, 0, 20, 1024, 64, 2, False)
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+import gnn_edge_labels
+
+
+#define setup for separate premise and goal GNNs
+
+def loss_edges(graph_net_1, graph_net_2, batch, fc):#, F_p, F_i, F_o, F_x, F_c, conv1, conv2, num_iterations):
+
+    g0_embedding = graph_net_1(batch.x_t.to(device), batch.edge_index_t.to(device), batch.edge_attr_t.to(device), batch.x_t_batch.to(device))
+
+    g1_embedding = graph_net_2(batch.x_s.to(device), batch.edge_index_s.to(device), batch.edge_attr_s.to(device), batch.x_s_batch.to(device))
+
+    preds = fc(torch.cat([g0_embedding, g1_embedding], axis=1))
+
+    eps = 1e-6
+
+    preds = torch.clip(preds, eps, 1-eps)
+
+    return binary_loss(torch.flatten(preds), torch.LongTensor(batch.y).to(device))
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+from tqdm import tqdm
+
+def accuracy_edges(graph_net_1, graph_net_2, batch, fc):
+
+    g0_embedding = graph_net_1(batch.x_t.to(device), batch.edge_index_t.to(device),batch.edge_attr_t.to(device), batch.x_t_batch.to(device))
+
+    g1_embedding = graph_net_2(batch.x_s.to(device), batch.edge_index_s.to(device), batch.edge_attr_s.to(device), batch.x_s_batch.to(device))
+
+    preds = fc(torch.cat([g0_embedding, g1_embedding], axis=1))
+
+    preds = torch.flatten(preds)
+
+    preds = (preds>0.5).long()
+
+    return torch.sum(preds == torch.LongTensor(batch.y).to(device)) / len(batch.y)
+
+
+def run_edges(step_size, decay_rate, num_epochs, batch_size, embedding_dim, graph_iterations, save=False):
+
+    loader = DataLoader(new_train, batch_size=batch_size, follow_batch=['x_s', 'x_t'])
+
+    val_loader = iter(DataLoader(new_val, batch_size=2048, follow_batch=['x_s', 'x_t']))
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+    graph_net_1 = gnn_edge_labels.message_passing_gnn_edges(len(tokens), embedding_dim, graph_iterations, device)
+
+    graph_net_2 = gnn_edge_labels.message_passing_gnn_edges(len(tokens), embedding_dim, graph_iterations, device)
+
+    fc = gnn_edge_labels.F_c_module_(embedding_dim * 8).to(device)
+
+    optimiser_gnn_1 = torch.optim.Adam(list(graph_net_1.parameters()), lr=step_size, weight_decay=decay_rate)
+    optimiser_gnn_2 = torch.optim.Adam(list(graph_net_2.parameters()), lr=step_size, weight_decay=decay_rate)
+
+    optimiser_fc = torch.optim.Adam(list(fc.parameters()), lr=step_size, weight_decay=decay_rate)
+
+    training_losses = []
+
+    val_losses = []
+
+    for j in range(num_epochs):
+        for i, batch in tqdm(enumerate(loader)):
+
+            optimiser_fc.zero_grad()
+
+            optimiser_gnn_1.zero_grad()
+            optimiser_gnn_2.zero_grad()
+
+            loss_val = loss_edges(graph_net_1,graph_net_2, batch, fc)#, fp, fi, fo, fx, fc,conv1,conv2, graph_iterations)
+
+            loss_val.backward()
+
+            optimiser_gnn_1.step()
+            optimiser_gnn_2.step()
+
+            optimiser_fc.step()
+
+
+            training_losses.append(loss_val.detach() / batch_size)
+
+            if i % 100 == 0:
+
+                validation_loss = accuracy_edges(graph_net_1, graph_net_2, next(val_loader), fc)#, fp, fi, fo, fx, fc,conv1,conv2, graph_iterations)
+
+                val_losses.append((validation_loss.detach(), j, i))
+
+                val_loader = iter(DataLoader(new_val, batch_size=2048, follow_batch=['x_s', 'x_t']))
+
+                print ("Curr training loss avg: {}".format(sum(training_losses[-100:]) / len(training_losses[-100:])))
+
+                print ("Val acc: {}".format(validation_loss.detach()))
+
+    #only save encoder for now
+    if save == True:
+        torch.save(graph_net_1, "model_checkpoints/gnn_encoder_latest_1")
+        torch.save(graph_net_2, "model_checkpoints/gnn_encoder_latest_2")
+
+
+    return training_losses, val_losses
+
+
+print (new_train[0])
+
+#run_edges(1e-3, 0, 20, 1024, 64, 4, False)
+run_2(1e-3, 0, 20, 1024, 64, 4, False)
 
 #todo add test set evaluation
 

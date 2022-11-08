@@ -236,7 +236,7 @@ def graph_to_torch_labelled(g):
 
     nodes = sp_to_torch(node_features)
 
-    return Data(x=nodes, edge_index=edges, labels=labels)
+    return Data(x=nodes, edge_index=edges, edge_attr=torch.Tensor(edge_labels), labels=labels)
 
 # #make database compatible with GNN encoder
 encoded_graph_db = []
@@ -375,22 +375,22 @@ class GNNVanilla(Agent):
         return 
 
     def save(self):
-        torch.save(self.context_net, "model_checkpoints/gnn_end_to_end_context")
-        torch.save(self.tac_net, "model_checkpoints/gnn_end_to_end_tac")
-        torch.save(self.arg_net, "model_checkpoints/gnn_end_to_end_arg")
-        torch.save(self.term_net, "model_checkpoints/gnn_end_to_end_term")
-        torch.save(self.induct_gnn, "model_checkpoints/gnn_end_to_end_induct")
-        torch.save(self.encoder, "model_checkpoints/gnn_encoder_end_to_end")
-        
+        torch.save(self.context_net, "model_checkpoints/gnn_induct_context")
+        torch.save(self.tac_net, "model_checkpoints/gnn_induct_tac")
+        torch.save(self.arg_net, "model_checkpoints/gnn_induct_arg")
+        torch.save(self.term_net, "model_checkpoints/gnn_induct_term")
+        torch.save(self.induct_gnn, "model_checkpoints/gnn_induct_gnn")
+        torch.save(self.encoder, "model_checkpoints/gnn_encoder_induct")
+
         
     
     def load(self):
-        self.context_net = torch.load("model_checkpoints/gnn_end_to_end_context")
-        self.tac_net = torch.load("model_checkpoints/gnn_end_to_end_tac") 
-        self.arg_net = torch.load("model_checkpoints/gnn_end_to_end_arg")
-        self.term_net = torch.load("model_checkpoints/gnn_end_to_end_term")
-        self.induct_gnn = torch.load("model_checkpoints/gnn_end_to_end_induct")
-        self.encoder = torch.load("model_checkpoints/gnn_encoder_end_to_end")
+        self.context_net = torch.load("model_checkpoints/gnn_induct_context")
+        self.tac_net = torch.load("model_checkpoints/gnn_induct_tac")
+        self.arg_net = torch.load("model_checkpoints/gnn_induct_arg")
+        self.term_net = torch.load("model_checkpoints/gnn_induct_term")
+        self.induct_gnn = torch.load("model_checkpoints/gnn_induct_gnn")
+        self.encoder = torch.load("model_checkpoints/gnn_encoder_induct")
 
         self.optimizer_context = torch.optim.RMSprop(list(self.context_net.parameters()), lr=self.context_rate)
         self.optimizer_tac = torch.optim.RMSprop(list(self.tac_net.parameters()), lr=self.tac_rate)
@@ -1127,13 +1127,13 @@ class Experiment_GNN:
 
             date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
             
-            with open(f"traces/gnn_agent_reward_trace_{date}.pk", "wb") as f:
+            with open(f"traces/gnn_induction_agent_reward_trace_{date}.pk", "wb") as f:
                 pickle.dump(reward_trace, f)
 
-            with open("traces/gnn_model_errors.pk", "wb") as f:
+            with open("traces/gnn_model_induction_errors.pk", "wb") as f:
                 pickle.dump((env_errors, agent_errors), f)
 
-            with open(f"traces/gnn_model_proved_{date}.pk", "wb") as f:
+            with open(f"traces/gnn_model_induction_proved_{date}.pk", "wb") as f:
                 pickle.dump(proved_trace, f)
 
 
