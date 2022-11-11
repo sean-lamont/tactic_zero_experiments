@@ -258,17 +258,17 @@ with open("paper_goals.pk", "rb") as f:
    paper_goals = pickle.load(f)
 
 # only take valid goals with database
-valid_goals = []
-for goal in paper_goals:
-   if goal[0] in compat_db.keys():
-       valid_goals.append(goal)
-
-print (f"Len valid {len(valid_goals)}")
-np.random.shuffle(valid_goals)
-
-with open("valid_goals_shuffled.pk", "wb") as f:
-   pickle.dump(valid_goals, f)
-
+# valid_goals = []
+# for goal in paper_goals:
+#    if goal[0] in compat_db.keys():
+#        valid_goals.append(goal)
+#
+# print (f"Len valid {len(valid_goals)}")
+# np.random.shuffle(valid_goals)
+#
+# with open("valid_goals_shuffled.pk", "wb") as f:
+#    pickle.dump(valid_goals, f)
+#
 
 with open("valid_goals_shuffled.pk", "rb") as f:
     valid_goals = pickle.load(f)

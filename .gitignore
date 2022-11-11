@@ -1,4 +1,5 @@
 *.pk
+!valid_goals_shuffled.pk
 *.json
 !dataset.json
 !include_probability.json
