@@ -918,7 +918,7 @@ class Experiment_Vanilla:
 
 def run_experiment():
     try:
-        agent = TorchVanilla(tactic_pool, replay_dir="vanilla_agent_replays.json")
+        agent = TorchVanilla(tactic_pool)#, replay_dir="vanilla_agent_replays.json")
 
         # agent.load()
 

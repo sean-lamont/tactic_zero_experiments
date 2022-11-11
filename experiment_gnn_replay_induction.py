@@ -21,7 +21,7 @@ import time
 from new_env import *
 import numpy as np
 import torch_geometric
-import batch_gnn
+#import batch_gnn
 
 
 
@@ -132,7 +132,7 @@ class Agent:
 
 
 
-gnn_enc = torch.load("model_checkpoints/gnn_encoder_latest")#.eval()
+#gnn_enc = torch.load("model_checkpoints/gnn_encoder_latest")#.eval()
 #
 # for p in gnn_enc.parameters():
 #     p.require_grads = False
@@ -298,8 +298,10 @@ def gather_encoded_content_gnn(history, encoder):
 
     batch = next(iter(loader))
 
-    representations = torch.unsqueeze(encoder.forward(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device)), 1)
-        
+    # representations = torch.unsqueeze(encoder.forward(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device)), 1)
+    #encode_and_pool for digae model
+    representations = torch.unsqueeze(encoder.encode_and_pool(batch.x.to(device), batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device)), 1)
+
     return representations, contexts, fringe_sizes
 
 # def gather_encoded_content_gnn_induct(history, encoder):
@@ -367,12 +369,13 @@ class GNNVanilla(Agent):
         else:
             self.replays = {}
 
-        self.optimizer_encoder = torch.optim.RMSprop(list(self.encoder.parameters()), lr=self.term_rate)
-
+        self.optimizer_encoder_premise = torch.optim.RMSprop(list(self.encoder_premise.parameters()), lr=self.term_rate)
+        self.optimizer_encoder_goal = torch.optim.RMSprop(list(self.encoder_goal.parameters()), lr=self.term_rate)
 
     def load_encoder(self):
-        self.encoder = torch.load("model_checkpoints/gnn_encoder_latest") 
-        return 
+        self.encoder_premise = torch.load("model_checkpoints/gnn_encoder_latest_premise")
+        self.encoder_goal = torch.load("model_checkpoints/gnn_encoder_latest_goal")
+        return
 
     def save(self):
         torch.save(self.context_net, "model_checkpoints/gnn_induct_context")
@@ -380,7 +383,8 @@ class GNNVanilla(Agent):
         torch.save(self.arg_net, "model_checkpoints/gnn_induct_arg")
         torch.save(self.term_net, "model_checkpoints/gnn_induct_term")
         torch.save(self.induct_gnn, "model_checkpoints/gnn_induct_gnn")
-        torch.save(self.encoder, "model_checkpoints/gnn_encoder_induct")
+        torch.save(self.encoder_premise, "model_checkpoints/gnn_encoder_premise_e2e")
+        torch.save(self.encoder_goal, "model_checkpoints/gnn_encoder_goal_e2e")
 
         
     
@@ -390,18 +394,21 @@ class GNNVanilla(Agent):
         self.arg_net = torch.load("model_checkpoints/gnn_induct_arg")
         self.term_net = torch.load("model_checkpoints/gnn_induct_term")
         self.induct_gnn = torch.load("model_checkpoints/gnn_induct_gnn")
-        self.encoder = torch.load("model_checkpoints/gnn_encoder_induct")
+
+        self.encoder_premise = torch.load("model_checkpoints/gnn_encoder_premise_e2e")
+        self.encoder_goal = torch.load("model_checkpoints/gnn_encoder_goal_e2e")
 
         self.optimizer_context = torch.optim.RMSprop(list(self.context_net.parameters()), lr=self.context_rate)
         self.optimizer_tac = torch.optim.RMSprop(list(self.tac_net.parameters()), lr=self.tac_rate)
         self.optimizer_arg = torch.optim.RMSprop(list(self.arg_net.parameters()), lr=self.arg_rate)
         self.optimizer_term = torch.optim.RMSprop(list(self.term_net.parameters()), lr=self.term_rate)
         self.optimizer_induct = torch.optim.RMSprop(list(self.induct_gnn.parameters()), lr = self.term_rate)
-        self.optimizer_encoder = torch.optim.RMSprop(list(self.encoder.parameters()), lr=self.term_rate)
+        self.optimizer_encoder_premise = torch.optim.RMSprop(list(self.encoder_premise.parameters()), lr=self.term_rate)
+        self.optimizer_encoder_goal = torch.optim.RMSprop(list(self.encoder_goal.parameters()), lr=self.term_rate)
 
-    def run(self, env, encoded_fact_pool, allowed_arguments_ids, candidate_args, max_steps=50):
+    def run(self, env, allowed_fact_batch, allowed_arguments_ids, candidate_args, max_steps=50):
         
-        encoded_fact_pool = encoded_fact_pool.to(self.device)
+        allowed_fact_batch = allowed_fact_batch.to(self.device)
         fringe_pool = []
         tac_pool = []
         arg_pool = []
@@ -421,9 +428,9 @@ class GNNVanilla(Agent):
 
         for t in range(max_steps):
             
-            # gather all the goals in the history
+            # gather all the goals in the history using goal encoder
             try:
-                representations, context_set, fringe_sizes = gather_encoded_content_gnn(env.history, self.encoder)
+                representations, context_set, fringe_sizes = gather_encoded_content_gnn(env.history, self.encoder_goal)
             except Exception as e:
                 print ("Encoder error {}".format(e))
                 return ("Encoder error", str(e))
@@ -561,8 +568,11 @@ class GNNVanilla(Agent):
                     hiddenl = torch.cat(hiddenl)
                 except Exception as e:
                     return ("hiddenl error...{}", str(e))
-                    
 
+                #encode premises with premise GNN
+                #encoded_fact_pool = self.encoder_premise.forward(allowed_fact_batch.x.to(device), allowed_fact_batch.edge_index.to(device), allowed_fact_batch.batch.to(device))
+                #encode and pool for digae
+                encoded_fact_pool = self.encoder_premise.encode_and_pool(allowed_fact_batch.x.to(device), allowed_fact_batch.x.to(device), allowed_fact_batch.edge_index.to(device), allowed_fact_batch.batch.to(device))
                 candidates = torch.cat([encoded_fact_pool, hiddenl], dim=1)
                 candidates = candidates.to(self.device)
                             
@@ -713,7 +723,8 @@ class GNNVanilla(Agent):
         self.optimizer_arg.zero_grad()
         self.optimizer_term.zero_grad()
         self.optimizer_induct.zero_grad()
-        self.optimizer_encoder.zero_grad()
+        self.optimizer_encoder_premise.zero_grad()
+        self.optimizer_encoder_goal.zero_grad()
 
 
         total_loss = 0
@@ -736,15 +747,15 @@ class GNNVanilla(Agent):
         self.optimizer_arg.step()
         self.optimizer_term.step()
         self.optimizer_induct.step()
-        self.optimizer_encoder.step()
+        self.optimizer_encoder_premise.step()
+        self.optimizer_encoder_goal.step()
+        return
 
-        return 
-
-    def replay_known_proof(self, env, encoded_fact_pool, allowed_arguments_ids, candidate_args):
+    def replay_known_proof(self, env, allowed_fact_batch, allowed_arguments_ids, candidate_args):
         #known_history = random.sample(self.replays[env.goal][1], 1)[0]#[0]
         known_history = self.replays[env.goal][1]#[0]
 
-        encoded_fact_pool = encoded_fact_pool.to(self.device)
+        allowed_fact_batch = allowed_fact_batch.to(self.device)
         fringe_pool = []
         tac_pool = []
         arg_pool = []
@@ -760,7 +771,7 @@ class GNNVanilla(Agent):
             true_resulting_fringe = known_history[t + 1]
 
             try:
-                representations, context_set, fringe_sizes = gather_encoded_content_gnn(known_history[:t+1], self.encoder)
+                representations, context_set, fringe_sizes = gather_encoded_content_gnn(known_history[:t+1], self.encoder_goal)
             except Exception as e:
                 print("Encoder error {}".format(e))
                 return ("Encoder error", str(e))
@@ -860,7 +871,7 @@ class GNNVanilla(Agent):
 
                 if tokens:
 
-                    print ("replaying induction")
+                    # print ("replaying induction")
 
                     true_term = torch.tensor([tokens.index(["V" + true_args_text])])
 
@@ -942,6 +953,7 @@ class GNNVanilla(Agent):
                     return ("hiddenl error...{}", str(e))
 
 
+                encoded_fact_pool = self.encoder_premise.encode_and_pool(allowed_fact_batch.x.to(device), allowed_fact_batch.x.to(device),allowed_fact_batch.edge_index.to(device), allowed_fact_batch.batch.to(device))
                 candidates = torch.cat([encoded_fact_pool, hiddenl], dim=1)
                 candidates = candidates.to(self.device)
 
@@ -1037,7 +1049,7 @@ class GNNVanilla(Agent):
         return
 
     def save_replays(self):
-        with open("agent_replays.json", "w") as f:
+        with open("gnn_induct_agent_replays.json", "w") as f:
             json.dump(self.replays, f)
 
 
@@ -1075,14 +1087,14 @@ class Experiment_GNN:
                     continue
                  
                 try:
-                    encoded_fact_pool, allowed_arguments_ids, candidate_args = self.gen_fact_pool(env, goal)
+                    allowed_fact_batch, allowed_arguments_ids, candidate_args = self.gen_fact_pool(env, goal)
                 except Exception as e:
                     print ("Env error: {}".format(e))
                     #env_errors.append((goal, "Error generating fact pool", i))
                     continue
                     
                 result = self.agent.run(env, 
-                                        encoded_fact_pool, 
+                                        allowed_fact_batch,
                                         allowed_arguments_ids, candidate_args,  max_steps=50)
 
                 
@@ -1111,7 +1123,7 @@ class Experiment_GNN:
                         print ("env reset...")
 
                         try:
-                            self.agent.replay_known_proof(env, encoded_fact_pool, allowed_arguments_ids, candidate_args)
+                            self.agent.replay_known_proof(env, allowed_fact_batch, allowed_arguments_ids, candidate_args)
                         except Exception as e:
                             print (f"replay error {e}")
 
@@ -1183,12 +1195,14 @@ class Experiment_GNN:
         
         loader = DataLoader(graphs, batch_size = len(candidate_args))
         
-        batch = next(iter(loader))
+        allowed_fact_batch = next(iter(loader))
 
 
-        encoded_fact_pool = gnn_enc.forward(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device))
+        # encoded_fact_pool = gnn_enc.forward(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device))
 
-        return encoded_fact_pool, allowed_arguments_ids, candidate_args
+        # return encoded_fact_pool, allowed_arguments_ids, candidate_args
+        #return batch with graphs to encode by agent
+        return allowed_fact_batch, allowed_arguments_ids, candidate_args
 
 
 
@@ -1200,7 +1214,7 @@ def run_experiment():
 
         #agent.load()
 
-        exp_gnn = Experiment_GNN(agent, train_goals[:8], compat_db, 800)
+        exp_gnn = Experiment_GNN(agent, train_goals, compat_db, 800)
 
         exp_gnn.train()
 

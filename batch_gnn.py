@@ -521,8 +521,10 @@ def run_digae(step_size, decay_rate, num_epochs, batch_size, embedding_dim, grap
     training_losses = []
 
     val_losses = []
+    best_acc = 0.
 
     for j in range(num_epochs):
+        print (f"Epoch: {j}")
         for i, batch in tqdm(enumerate(loader)):
 
             # op_enc.zero_grad()
@@ -579,15 +581,19 @@ def run_digae(step_size, decay_rate, num_epochs, batch_size, embedding_dim, grap
 
                 print ("Val acc: {}".format(validation_loss.detach()))
 
-    #only save encoder for now
-    if save == True:
-        torch.save(graph_net_1, "model_checkpoints/gnn_encoder_latest_goal")
-        torch.save(graph_net_2, "model_checkpoints/gnn_encoder_latest_premise")
+                if validation_loss > best_acc:
+                    best_acc = validation_loss
+                    print (f"New best validation accuracy: {best_acc}")
+                    #only save encoder if best accuracy so far
+                    if save == True:
+                        torch.save(graph_net_1, "model_checkpoints/gnn_encoder_latest_goal")
+                        torch.save(graph_net_2, "model_checkpoints/gnn_encoder_latest_premise")
 
+    print (f"Best validation accuracy: {best_acc}")
 
     return training_losses, val_losses
 
-run_digae(1e-3, 0, 20, 1024, 64, 2)
+run_digae(1e-3, 0, 40, 1024, 64, 2, save=True)
 
 
 #todo add test set evaluation
