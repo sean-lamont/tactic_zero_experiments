@@ -1,4 +1,6 @@
 import torch
+from digae_layers import DirectedGCNConvEncoder, DirectedInnerProductDecoder, SingleLayerDirectedGCNConvEncoder
+from digae_model import OneHotDirectedGAE
 import json
 import inner_embedding_network
 from torch_geometric.data import Data
@@ -390,9 +392,14 @@ def run_edges(step_size, decay_rate, num_epochs, batch_size, embedding_dim, grap
 
     device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
-    graph_net_1 = gnn_edge_labels.message_passing_gnn_edges(len(tokens), embedding_dim, graph_iterations, device)
 
-    graph_net_2 = gnn_edge_labels.message_passing_gnn_edges(len(tokens), embedding_dim, graph_iterations, device)
+    # graph_net_1 = gnn_edge_labels.message_passing_gnn_edges(len(tokens), embedding_dim, graph_iterations, device)
+    #
+    # graph_net_2 = gnn_edge_labels.message_passing_gnn_edges(len(tokens), embedding_dim, graph_iterations, device)
+
+    # graph_net_1 = gnn_edge_labels.message_passing_gnn_edges_gine(len(tokens), embedding_dim, graph_iterations, device)
+    #
+    # graph_net_2 = gnn_edge_labels.message_passing_gnn_edges_gine(len(tokens), embedding_dim, graph_iterations, device)
 
     fc = gnn_edge_labels.F_c_module_(embedding_dim * 8).to(device)
 
@@ -446,10 +453,142 @@ def run_edges(step_size, decay_rate, num_epochs, batch_size, embedding_dim, grap
     return training_losses, val_losses
 
 
-print (new_train[0])
+#run_edges(1e-3, 0, 20, 1024, 64, 0, False)
+#run_2(1e-3, 0, 20, 1024, 64, 4, False)
 
-#run_edges(1e-3, 0, 20, 1024, 64, 4, False)
-run_2(1e-3, 0, 20, 1024, 64, 4, False)
+def accuracy_digae(model_1, model_2, batch, fc):
+
+    data_1 = Data(x=batch.x_t.to(device), edge_index=batch.edge_index_t.to(device))
+    data_2 = Data(x=batch.x_s.to(device), edge_index=batch.edge_index_s.to(device))
+
+    # g0_embedding = graph_net(batch.x_t.to(device), batch.edge_index_t.to(device), batch.x_t_batch.to(device))
+    #
+    # g1_embedding = graph_net(batch.x_s.to(device), batch.edge_index_s.to(device), batch.x_s_batch.to(device))
+
+    u1 = data_1.x.clone().to(device)
+    v1 = data_1.x.clone().to(device)
+
+    train_pos_edge_index_1 = data_1.edge_index.clone().to(device)
+
+    u2 = data_2.x.clone().to(device)
+    v2 = data_2.x.clone().to(device)
+
+    train_pos_edge_index_2 = data_2.edge_index.clone().to(device)
+
+    graph_enc_1 = model_1.encode_and_pool(u1, v1, train_pos_edge_index_1, batch.x_t_batch.to(device))
+
+    graph_enc_2 = model_2.encode_and_pool(u2, v2, train_pos_edge_index_2, batch.x_s_batch.to(device))
+
+    preds = fc(torch.cat([graph_enc_1, graph_enc_2], axis=1))
+
+    preds = torch.flatten(preds)
+
+    preds = (preds>0.5).long()
+
+    return torch.sum(preds == torch.LongTensor(batch.y).to(device)) / len(batch.y)
+
+
+device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+
+
+def run_digae(step_size, decay_rate, num_epochs, batch_size, embedding_dim, graph_iterations, save=False):
+
+    loader = DataLoader(new_train, batch_size=batch_size, follow_batch=['x_s', 'x_t'])
+
+    val_loader = iter(DataLoader(new_val, batch_size=2048, follow_batch=['x_s', 'x_t']))
+
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
+    hidden_dim = 64
+    out_dim = 64
+
+    initial_encoder = inner_embedding_network.F_x_module_(len(tokens), embedding_dim).to(device)
+    decoder = DirectedInnerProductDecoder()
+
+    # encoder = DirectedGCNConvEncoder(embedding_dim, hidden_dim, out_dim, alpha=0.2, beta=0.8,
+    #                                         self_loops=True,
+    #                                         adaptive=False)
+
+    graph_net_1 = OneHotDirectedGAE(initial_encoder, embedding_dim, hidden_dim, out_dim).to(device)
+    graph_net_2 = OneHotDirectedGAE(initial_encoder, embedding_dim, hidden_dim, out_dim).to(device)
+
+    fc = gnn_edge_labels.F_c_module_(embedding_dim * 8).to(device)
+
+    # op_enc =torch.optim.Adam(encoder.parameters(), lr=step_size)
+    op_g1 =torch.optim.Adam(graph_net_1.parameters(), lr=step_size)
+    op_g2 =torch.optim.Adam(graph_net_2.parameters(), lr=step_size)
+    op_fc =torch.optim.Adam(fc.parameters(), lr=step_size)
+
+    training_losses = []
+
+    val_losses = []
+
+    for j in range(num_epochs):
+        for i, batch in tqdm(enumerate(loader)):
+
+            # op_enc.zero_grad()
+            op_g1.zero_grad()
+            op_g2.zero_grad()
+            op_fc.zero_grad()
+
+            data_1 = Data(x=batch.x_t.to(device), edge_index=batch.edge_index_t.to(device))
+            data_2 = Data(x = batch.x_s.to(device), edge_index = batch.edge_index_s.to(device))
+
+
+            u1 = data_1.x.clone().to(device)
+            v1 = data_1.x.clone().to(device)
+
+
+            train_pos_edge_index_1 = data_1.edge_index.clone().to(device)
+
+            u2 = data_2.x.clone().to(device)
+            v2 = data_2.x.clone().to(device)
+
+            train_pos_edge_index_2 = data_2.edge_index.clone().to(device)
+
+            graph_enc_1 = graph_net_1.encode_and_pool(u1, v1, train_pos_edge_index_1, batch.x_t_batch.to(device))
+
+            graph_enc_2 = graph_net_2.encode_and_pool(u2, v2, train_pos_edge_index_2, batch.x_s_batch.to(device))
+
+
+            preds = fc(torch.cat([graph_enc_1, graph_enc_2], axis=1))
+
+            eps = 1e-6
+
+            preds = torch.clip(preds, eps, 1 - eps)
+
+            loss = binary_loss(torch.flatten(preds), torch.LongTensor(batch.y).to(device))
+
+            loss.backward()
+
+            # op_enc.step()
+            op_g1.step()
+            op_g2.step()
+            op_fc.step()
+
+            training_losses.append(loss.detach() / batch_size)
+
+            if i % 100 == 0:
+
+                validation_loss = accuracy_digae(graph_net_1, graph_net_2, next(val_loader), fc)#, fp, fi, fo, fx, fc,conv1,conv2, graph_iterations)
+
+                val_losses.append((validation_loss.detach(), j, i))
+
+                val_loader = iter(DataLoader(new_val, batch_size=2048, follow_batch=['x_s', 'x_t']))
+
+                print ("Curr training loss avg: {}".format(sum(training_losses[-100:]) / len(training_losses[-100:])))
+
+                print ("Val acc: {}".format(validation_loss.detach()))
+
+    #only save encoder for now
+    if save == True:
+        torch.save(graph_net_1, "model_checkpoints/gnn_encoder_latest_goal")
+        torch.save(graph_net_2, "model_checkpoints/gnn_encoder_latest_premise")
+
+
+    return training_losses, val_losses
+
+run_digae(1e-3, 0, 20, 1024, 64, 2)
+
 
 #todo add test set evaluation
 
