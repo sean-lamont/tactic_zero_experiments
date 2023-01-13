@@ -1,5 +1,11 @@
 *.pk
 !valid_goals_shuffled.pk
+!torch_graph_dict.pk
+!encoded_include_probability.pt
+!paper_goals.pk
+!graph_token_encoder.pk
+
+
 *.json
 !dataset.json
 !include_probability.json
