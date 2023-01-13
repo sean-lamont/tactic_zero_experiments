@@ -24,6 +24,7 @@ provables = [t[0] for t in provables]
 try:
     with open("bigger_new_facts.json") as f:
         new_facts = json.load(f)
+
 except:
     new_facts = {}
 

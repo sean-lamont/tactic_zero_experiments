@@ -153,11 +153,11 @@ Torch implementation of TacticZero with GNN encoder and random Induct term selec
 
 
 class TorchVanilla(Agent):
-    def __init__(self, tactic_pool, replay_dir=None):
+    def __init__(self, tactic_pool, replay_dir=None, train_mode = True):
         super().__init__(tactic_pool)
 
         self.ARG_LEN = 5
-
+        self.train_mode = train_mode
         self.context_rate = 5e-5
         self.tac_rate = 5e-5
         self.arg_rate = 5e-5
@@ -241,8 +241,9 @@ class TorchVanilla(Agent):
                 representations, context_set, fringe_sizes = gather_encoded_content(env.history, self.encoder)
             except Exception as e:
                 print("Encoder error {}".format(e))
-                return ("Encoder error", str(e))
-
+                # print (f"History: {env.history}")
+                # return ("Encoder error", str(e))
+                continue
             representations = torch.stack([i.to(self.device) for i in representations])
             context_scores = self.context_net(representations)
             contexts_by_fringe, scores_by_fringe = split_by_fringe(context_set, context_scores, fringe_sizes)
@@ -470,7 +471,8 @@ class TorchVanilla(Agent):
                 # print("Total: {}".format(total_reward))
                 iteration_rewards.append(total_reward)
 
-        self.update_params(reward_pool, fringe_pool, arg_pool, tac_pool, steps)
+        if self.train_mode:
+            self.update_params(reward_pool, fringe_pool, arg_pool, tac_pool, steps)
 
         return trace, steps, done, 0, float(np.sum(reward_print)), replay_flag
 
@@ -536,7 +538,9 @@ class TorchVanilla(Agent):
                                                                                         self.encoder)
             except Exception as e:
                 print("Encoder error {}".format(e))
-                return ("Encoder error", str(e))
+                # print (f"history: {known_history[:t + 1]}")
+                # return ("Encoder error", str(e))
+                continue
 
             representations = torch.stack([i.to(self.device) for i in representations])
             context_scores = self.context_net(representations)
@@ -766,7 +770,8 @@ class TorchVanilla(Agent):
 
         total_reward = float(np.sum(reward_print))
 
-        self.update_params(reward_pool, fringe_pool, arg_pool, tac_pool, steps)
+        if self.train_mode:
+            self.update_params(reward_pool, fringe_pool, arg_pool, tac_pool, steps)
 
         return
 
@@ -776,7 +781,8 @@ class TorchVanilla(Agent):
 
 
 class Experiment_Vanilla:
-    def __init__(self, agent, goals, database, num_iterations, encoded_db_dir):
+    def __init__(self, agent, goals, database, num_iterations, encoded_db_dir, train_mode=True):
+        self.train_mode = train_mode
         self.agent = agent
         self.goals = goals
         self.num_iterations = num_iterations
@@ -832,7 +838,6 @@ class Experiment_Vanilla:
 
                     if replay_flag:
                         print("replaying proof...")
-                        # todo reset env?
                         # reset environment before replay
                         try:
                             env.reset(goal[1])
@@ -852,25 +857,28 @@ class Experiment_Vanilla:
                     if done:
                         prove_count += 1
 
-            self.agent.save_replays()
+            if self.train_mode:
+                self.agent.save_replays()
             # full_trace.append(iter_trace)
             # iter_times.append(time.time() - it_start)
             proved_trace.append(prove_count)
 
             date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
 
-            with open(f"traces/vanilla_agent_reward_trace_{date}.pk", "wb") as f:
-                pickle.dump(reward_trace, f)
+            if self.train_mode:
 
-            with open("traces/vanilla_model_errors.pk", "wb") as f:
-                pickle.dump((env_errors, agent_errors), f)
+                with open(f"traces/vanilla_agent_reward_trace_{date}.pk", "wb") as f:
+                    pickle.dump(reward_trace, f)
 
-            with open(f"traces/vanilla_model_proved_{date}.pk", "wb") as f:
-                pickle.dump(proved_trace, f)
+                with open("traces/vanilla_model_errors.pk", "wb") as f:
+                    pickle.dump((env_errors, agent_errors), f)
 
-            # save parameters every iteration
-            self.agent.save()
+                with open(f"traces/vanilla_model_proved_{date}.pk", "wb") as f:
+                    pickle.dump(proved_trace, f)
 
+                # save parameters every iteration
+                self.agent.save()
+        print (prove_count)
         return  # full_trace, env_errors, agent_errors, iter_times
 
     def load_encoded_db(self, encoded_db_dir):
@@ -918,11 +926,11 @@ class Experiment_Vanilla:
 
 def run_experiment():
     try:
-        agent = TorchVanilla(tactic_pool)#, replay_dir="vanilla_agent_replays.json")
+        agent = TorchVanilla(tactic_pool, replay_dir="vanilla_agent_replays.json")
 
-        # agent.load()
+        agent.load()
 
-        exp_vanilla = Experiment_Vanilla(agent, train_goals, compat_db,  800, "encoded_include_probability.pt")
+        exp_vanilla = Experiment_Vanilla(agent, train_goals, compat_db,  169, "encoded_include_probability.pt")
 
         exp_vanilla.train()
 
@@ -931,4 +939,19 @@ def run_experiment():
         run_experiment()
 
 
-run_experiment()
+def run_test():
+
+    try:
+        agent = TorchVanilla(tactic_pool, train_mode=False)
+
+        agent.load()
+
+        exp_gnn = Experiment_Vanilla(agent, test_goals, compat_db, 1, "encoded_include_probability.pt", train_mode=False)
+
+        exp_gnn.train()
+
+    except Exception as e:
+        print (f"Fatal error {e}")
+
+# run_experiment()
+run_test()

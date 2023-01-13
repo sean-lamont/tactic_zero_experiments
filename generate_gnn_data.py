@@ -324,6 +324,7 @@ def generate_gnn_data(data, train_ratio, val_ratio, rand, data_dir):
 
         nodes = torch.tensor(np.array(node_features), dtype=torch.float)
 
+
         return Data(x=nodes, edge_index=edges)
 
     def sp_to_torch(sparse):

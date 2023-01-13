@@ -586,14 +586,14 @@ def run_digae(step_size, decay_rate, num_epochs, batch_size, embedding_dim, grap
                     print (f"New best validation accuracy: {best_acc}")
                     #only save encoder if best accuracy so far
                     if save == True:
-                        torch.save(graph_net_1, "model_checkpoints/gnn_encoder_latest_goal")
-                        torch.save(graph_net_2, "model_checkpoints/gnn_encoder_latest_premise")
+                        torch.save(graph_net_1, "model_checkpoints/gnn_encoder_bow_goal")
+                        torch.save(graph_net_2, "model_checkpoints/gnn_encoder_bow_premise")
 
     print (f"Best validation accuracy: {best_acc}")
 
     return training_losses, val_losses
 
-run_digae(1e-3, 0, 40, 1024, 64, 2, save=True)
+run_digae(1e-3, 0, 40, 1024, 64, 0, save=True)
 
 
 #todo add test set evaluation
@@ -623,7 +623,8 @@ run_digae(1e-3, 0, 40, 1024, 64, 2, save=True)
 #     x_t_struct = struct_net_target(inner_embedding_network.sp_to_torch(sp.sparse.vstack(batch.x_t_one_hot)).to(device))
 #     x_s_struct = struct_net_source(inner_embedding_network.sp_to_torch(sp.sparse.vstack(batch.x_s_one_hot)).to(device))
 #
-#     x_t_attr = graph_net(batch.x_t.to(device), batch.edge_index_t.to(device), batch.x_t_batch.to(device))
+#     x_t_attr = graph_net(batch.x_t.to(device), batch.edge_index_t.to(device), batch.x_t_batch.to(
+#     device))
 #
 #     x_s_attr = graph_net(batch.x_s.to(device), batch.edge_index_s.to(device), batch.x_s_batch.to(device))
 #

@@ -298,7 +298,7 @@ def gather_encoded_content_gnn(history, encoder):
 
     batch = next(iter(loader))
 
-    # representations = torch.unsqueeze(encoder.forward(batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device)), 1)
+    # representations = torch.unsqueeze(encoder.forward(batch.x.to(device), batch.edge_indegraph_pow_defdevice), batch.batch.to(device)), 1)
     #encode_and_pool for digae model
     representations = torch.unsqueeze(encoder.encode_and_pool(batch.x.to(device), batch.x.to(device), batch.edge_index.to(device), batch.batch.to(device)), 1)
 
@@ -333,11 +333,11 @@ Torch implementation of TacticZero with GNN encoder and random Induct term selec
 
 '''
 class GNNVanilla(Agent):
-    def __init__(self, tactic_pool, replay_dir = None):
+    def __init__(self, tactic_pool, replay_dir = None, train_mode = True):
         super().__init__(tactic_pool)
 
         self.ARG_LEN = 5
-
+        self.train_mode = train_mode
         self.context_rate = 5e-5
         self.tac_rate = 5e-5
         self.arg_rate = 5e-5
@@ -409,6 +409,7 @@ class GNNVanilla(Agent):
     def run(self, env, allowed_fact_batch, allowed_arguments_ids, candidate_args, max_steps=50):
         
         allowed_fact_batch = allowed_fact_batch.to(self.device)
+        # encoded_fact_pool = self.encoder_premise.encode_and_pool(allowed_fact_batch.x.to(device), allowed_fact_batch.x.to(device), allowed_fact_batch.edge_index.to(device), allowed_fact_batch.batch.to(device))
         fringe_pool = []
         tac_pool = []
         arg_pool = []
@@ -572,12 +573,13 @@ class GNNVanilla(Agent):
                 #encode premises with premise GNN
                 #encoded_fact_pool = self.encoder_premise.forward(allowed_fact_batch.x.to(device), allowed_fact_batch.edge_index.to(device), allowed_fact_batch.batch.to(device))
                 #encode and pool for digae
+                #do this at start to avoid recomputation?
                 encoded_fact_pool = self.encoder_premise.encode_and_pool(allowed_fact_batch.x.to(device), allowed_fact_batch.x.to(device), allowed_fact_batch.edge_index.to(device), allowed_fact_batch.batch.to(device))
                 candidates = torch.cat([encoded_fact_pool, hiddenl], dim=1)
                 candidates = candidates.to(self.device)
                             
                 input = tac_tensor
-                
+                # print (input.shape, candidates.shape)#, hidden.shape)
                 # run it once before predicting the first argument
                 hidden, _ = self.arg_net(input, candidates, hidden)
 
@@ -699,8 +701,10 @@ class GNNVanilla(Agent):
                 #print("Total: {}".format(total_reward))
                 iteration_rewards.append(total_reward)
 
-        
-        self.update_params(reward_pool, fringe_pool, arg_pool, tac_pool, steps)
+
+        if self.train_mode:
+
+            self.update_params(reward_pool, fringe_pool, arg_pool, tac_pool, steps)
         
         return trace, steps, done, 0, float(np.sum(reward_print)), replay_flag
 
@@ -1044,7 +1048,8 @@ class GNNVanilla(Agent):
 
         total_reward = float(np.sum(reward_print))
 
-        self.update_params(reward_pool, fringe_pool, arg_pool, tac_pool, steps)
+        if self.train_mode:
+            self.update_params(reward_pool, fringe_pool, arg_pool, tac_pool, steps)
 
         return
 
@@ -1054,8 +1059,9 @@ class GNNVanilla(Agent):
 
 
 class Experiment_GNN:
-    def __init__(self, agent, goals, database, num_iterations):
+    def __init__(self, agent, goals, database, num_iterations, train_mode= True):
         self.agent = agent
+        self.train_mode = train_mode
         self.goals = goals
         self.num_iterations = num_iterations
         self.database = database
@@ -1132,26 +1138,31 @@ class Experiment_GNN:
                     if done:
                         prove_count += 1
 
-            self.agent.save_replays()
+            if self.train_mode:
+                self.agent.save_replays()
             #full_trace.append(iter_trace)
             #iter_times.append(time.time() - it_start)
             proved_trace.append(prove_count)
 
-            date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
-            
-            with open(f"traces/gnn_induction_agent_reward_trace_{date}.pk", "wb") as f:
-                pickle.dump(reward_trace, f)
-
-            with open("traces/gnn_model_induction_errors.pk", "wb") as f:
-                pickle.dump((env_errors, agent_errors), f)
-
-            with open(f"traces/gnn_model_induction_proved_{date}.pk", "wb") as f:
-                pickle.dump(proved_trace, f)
+            if self.train_mode:
+                date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
 
 
-            #save parameters every iteration
-            self.agent.save()
-            
+                with open(f"traces/gnn_induction_agent_reward_trace_{date}.pk", "wb") as f:
+                    pickle.dump(reward_trace, f)
+
+                with open("traces/gnn_model_induction_errors.pk", "wb") as f:
+                    pickle.dump((env_errors, agent_errors), f)
+
+                with open(f"traces/gnn_model_induction_proved_{date}.pk", "wb") as f:
+                    pickle.dump(proved_trace, f)
+
+
+                #save parameters every iteration
+                self.agent.save()
+
+            print (prove_count)
+            print ("wefwef")
         return #full_trace, env_errors, agent_errors, iter_times
             
                 
@@ -1208,11 +1219,10 @@ class Experiment_GNN:
 
 
 def run_experiment():
-   
     try:
-        agent = GNNVanilla(tactic_pool)#, replay_dir="agent_replays.json")
+        agent = GNNVanilla(tactic_pool, replay_dir="gnn_induct_agent_replays.json")
 
-        #agent.load()
+        agent.load()
 
         exp_gnn = Experiment_GNN(agent, train_goals, compat_db, 800)
 
@@ -1222,10 +1232,25 @@ def run_experiment():
         print (f"Fatal error {e}")
         run_experiment()
 
+def run_test():
+    try:
+        agent = GNNVanilla(tactic_pool, replay_dir=None, train_mode=False)
+
+        agent.load()
+
+        exp_gnn = Experiment_GNN(agent, test_goals, compat_db, 1, train_mode=False)
+
+        exp_gnn.train()
+
+    except Exception as e:
+        print (f"Fatal error {e}")
+        # run_experiment()
 
 
-run_experiment()
 
+
+# run_experiment()
+run_test()
 
 
 #sanity check encodings are similar between non-deterministic runs

@@ -1,4 +1,7 @@
+import networkx as nx
 import subprocess
+import plotly.graph_objects as go
+from igraph import Graph
 from random import sample
 from random import shuffle
 import pexpect
@@ -417,7 +420,7 @@ class HolEnv():
             d = self.query(goal, "rpt strip_tac >> " + tactic)
             
             # HOL_key = (goal, "rpt strip_tac >> " + normalize_args(tactic))
-            # HOL_key = (goal, "rpt strip_tac >> " + tactic)
+            # HOL_key = (goal, "rpt strip_tac >e " + tactic)
 
             # if HOL_key in HOL_cache:
             #     d = HOL_cache[HOL_key]
@@ -720,7 +723,7 @@ def make_tree(history):
     return es
 
     
-def draw_tree(history, output_graph=False):
+def draw_tree(history):#, output_graph=False):
     nv = len(history)
     eslb = make_tree(history)
     es = [i[0] for i in eslb]
