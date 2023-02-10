@@ -476,6 +476,7 @@ class TransformerVanilla(Agent):
                 # encoded_fact_pool = self.encoder_premise.encode_and_pool(allowed_fact_batch.x.to(device), allowed_fact_batch.x.to(device), allowed_fact_batch.edge_index.to(device), allowed_fact_batch.batch.to(device))
                 #break up into smaller sizes for memory ?
                 # encoded_fact_pool = gen_embedding(self.encoder_premise, allowed_fact_batch, src_mask=generate_square_subsequent_mask(allowed_fact_batch.shape[0]).to(device))
+                # print (encoded_fact_pool.shape)
                 candidates = torch.cat([encoded_fact_pool, hiddenl], dim=1)#.unsqueeze(0)
                 candidates = candidates.to(self.device)
                 input = tac_tensor
@@ -491,6 +492,8 @@ class TransformerVanilla(Agent):
                     arg_len = self.ARG_LEN#ARG_LEN
 
 
+
+                # print (input.shape, candidates.shape, hidden[0].shape)
                 for _ in range(arg_len):
                     hidden, scores = self.arg_net(input, candidates, hidden)
                     arg_probs = F.softmax(scores, dim=0)
@@ -1056,8 +1059,8 @@ class Experiment_Transformer:
                 #save parameters every iteration
                 self.agent.save()
 
-            # print (prove_count)
-            # print ("wefwef")
+            print (prove_count)
+            print ("Done")
         return #full_trace, env_errors, agent_errors, iter_times
             
                 
@@ -1146,9 +1149,11 @@ def run_test():
 
 
 # run_experiment()
-run_experiment()
+# run_experiment()
 
 
+run_test()
+#
 #sanity check encodings are similar between non-deterministic runs
 # cs = torch.nn.CosineSimilarity(dim=1, eps=1e-08)
 

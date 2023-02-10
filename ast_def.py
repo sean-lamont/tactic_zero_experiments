@@ -5,7 +5,6 @@ import torch
 import networkx as nx
 import matplotlib.pyplot as plt
 
-
 class AST:
     def __init__(self, node, children=[], parent=None):
         self.node = node

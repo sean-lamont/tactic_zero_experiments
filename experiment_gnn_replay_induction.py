@@ -441,10 +441,13 @@ class GNNVanilla(Agent):
             context_scores = self.context_net(representations)
             contexts_by_fringe, scores_by_fringe = split_by_fringe(context_set, context_scores, fringe_sizes)
             fringe_scores = []
+
             for s in scores_by_fringe:
-                fringe_score = torch.sum(s) 
+                fringe_score = torch.sum(s)
                 fringe_scores.append(fringe_score)
             fringe_scores = torch.stack(fringe_scores)
+
+
             fringe_probs = F.softmax(fringe_scores, dim=0)
             fringe_m = Categorical(fringe_probs)
             fringe = fringe_m.sample()
@@ -459,10 +462,12 @@ class GNNVanilla(Agent):
             target_goal = target_context["polished"]["goal"]
             target_representation = representations[context_set.index(target_context)]
 
-
             tac_input = target_representation#.unsqueeze(0)
             tac_input = tac_input.to(self.device)
 
+
+
+            # print (tac_input, tac_input.shape)
             tac_probs = self.tac_net(tac_input)
             tac_m = Categorical(tac_probs)
             tac = tac_m.sample()
@@ -470,8 +475,8 @@ class GNNVanilla(Agent):
             action_pool.append(tactic_pool[tac])
             tac_print.append(tac_probs.detach())
 
-
             tac_tensor = tac.to(self.device)
+
 
             if tactic_pool[tac] in no_arg_tactic:
                 tactic = tactic_pool[tac]
@@ -555,6 +560,7 @@ class GNNVanilla(Agent):
                     tactic = "Induct_on"
             else:
                 hidden0 = hidden1 = target_representation
+
                 hidden0 = hidden0.to(self.device)
                 hidden1 = hidden1.to(self.device)
 
