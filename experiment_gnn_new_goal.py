@@ -1,4 +1,5 @@
 import traceback
+import graph_env
 from datetime import datetime
 from torch_geometric.data import data
 import ast_def
@@ -167,9 +168,20 @@ def nodes_list_to_senders_receivers_labelled(node_list):
     return senders, receivers, edge_labels
 
 
+# # Return set of all unique nodes in a graph
+# def nodes_list(g, result=[]):
+#     result.append(g)
+#
+#     for val in g.children.values():
+#         siblings = val[1]
+#         for sibling in siblings:
+#             nodes_list(sibling, result)
+#
+#     return list(set(result))
+
+
 def nodes_list(g, result=[]):
     result.append(g)
-
     for child in g.children:
         nodes_list(child, result)
 
@@ -371,6 +383,7 @@ def embed_goal_graph_replay(main_goal, graph, encoder, score_net, chosen_goal):
     reverted = []
 
     for goal in graph:
+
         g = revert_with_polish(goal.goal)
         reverted.append(g)
 
@@ -410,9 +423,9 @@ def embed_goal_graph_replay(main_goal, graph, encoder, score_net, chosen_goal):
     goal_m = Categorical(goal_probs)
 
     chosen_idx = graph.index(chosen_goal)
-    chosen_prob = goal_m.log_prob(chosen_idx)
+    # chosen_prob = goal_m.log_prob(chosen_idx)
 
-    return representations[chosen_idx], goal_m.log_prob(chosen_idx)
+    return representations[chosen_idx], goal_m.log_prob(torch.tensor(chosen_idx))
 
 
 def embed_goal_graph(main_goal, graph, encoder, score_net):
@@ -461,16 +474,13 @@ def embed_goal_graph(main_goal, graph, encoder, score_net):
     # index for best node
     goal = goal_m.sample()
 
-
     # returns the best node starting from the chosen up-down node
     best_subgoal = select_best_subgoal(graph[goal])
 
     # fringe_pool.append(goal_m.log_prob(goal))
-
-
     best_idx = graph.index(best_subgoal)
 
-    return best_subgoal, representations[best_idx], goal_m.log_prob(best_idx)
+    return best_subgoal, representations[best_idx], goal_m.log_prob(torch.tensor(best_idx))
     # return graph[goal], representations[goal]
 
 
@@ -525,25 +535,25 @@ class GNNVanilla(Agent):
         return
 
     def save(self):
-        torch.save(self.context_net, "model_checkpoints/gnn_induct_context")
-        torch.save(self.tac_net, "model_checkpoints/gnn_induct_tac")
-        torch.save(self.arg_net, "model_checkpoints/gnn_induct_arg")
-        torch.save(self.term_net, "model_checkpoints/gnn_induct_term")
-        torch.save(self.induct_gnn, "model_checkpoints/gnn_induct_gnn")
-        torch.save(self.encoder_premise, "model_checkpoints/gnn_encoder_premise_e2e")
-        torch.save(self.encoder_goal, "model_checkpoints/gnn_encoder_goal_e2e")
+        torch.save(self.context_net, "model_checkpoints/gnn_new_goal_context")
+        torch.save(self.tac_net, "model_checkpoints/gnn_new_goal_tac")
+        torch.save(self.arg_net, "model_checkpoints/gnn_new_goal_arg")
+        torch.save(self.term_net, "model_checkpoints/gnn_new_goal_term")
+        torch.save(self.induct_gnn, "model_checkpoints/gnn_new_goal_induct")
+        torch.save(self.encoder_premise, "model_checkpoints/gnn_new_goal_encoder_premise_e2e")
+        torch.save(self.encoder_goal, "model_checkpoints/gnn_new_goal_encoder_goal_e2e")
 
         
     
     def load(self):
-        self.context_net = torch.load("model_checkpoints/gnn_induct_context")
-        self.tac_net = torch.load("model_checkpoints/gnn_induct_tac")
-        self.arg_net = torch.load("model_checkpoints/gnn_induct_arg")
-        self.term_net = torch.load("model_checkpoints/gnn_induct_term")
-        self.induct_gnn = torch.load("model_checkpoints/gnn_induct_gnn")
+        self.context_net = torch.load("model_checkpoints/gnn_new_goal_context")
+        self.tac_net = torch.load("model_checkpoints/gnn_new_goal_tac")
+        self.arg_net = torch.load("model_checkpoints/gnn_new_goal_arg")
+        self.term_net = torch.load("model_checkpoints/gnn_new_goal_term")
+        self.induct_gnn = torch.load("model_checkpoints/gnn_new_goal_induct")
 
-        self.encoder_premise = torch.load("model_checkpoints/gnn_encoder_premise_e2e")
-        self.encoder_goal = torch.load("model_checkpoints/gnn_encoder_goal_e2e")
+        self.encoder_premise = torch.load("model_checkpoints/gnn_new_goal_encoder_premise_e2e")
+        self.encoder_goal = torch.load("model_checkpoints/gnn_new_goal_encoder_goal_e2e")
 
         self.optimizer_context = torch.optim.RMSprop(list(self.context_net.parameters()), lr=self.context_rate)
         self.optimizer_tac = torch.optim.RMSprop(list(self.tac_net.parameters()), lr=self.tac_rate)
@@ -826,6 +836,8 @@ class GNNVanilla(Agent):
 
                     print (f"Proof validation exception {e}")
 
+                    print (env.history, env.action_history)
+
                     traceback.print_exc()
 
                 # print (proof_len, proof)
@@ -850,16 +862,16 @@ class GNNVanilla(Agent):
                 #if proved, add to successful replays for this goal
                 if env.goal in self.replays.keys():
                     #if proof done in less steps than before, add to dict
-                    if steps < self.replays[env.goal][0]:
+                    if steps < len(self.replays[env.goal][0]):
                         print ("adding to replay")
                         # print (env.history)
-                        self.replays[env.goal] = (steps, env.history)
+                        self.replays[env.goal] = (env.history, env.action_history, reward_pool)
                 else:
 
                     print ("Initial add to db...")
                     # print (env.history)
                     if env.history is not None:
-                        self.replays[env.goal] = (steps, env.history)
+                        self.replays[env.goal] = (env.history, env.action_history, reward_pool)
 
                     else:
                         print ("history is none.............")
@@ -942,7 +954,10 @@ class GNNVanilla(Agent):
     def replay_known_proof(self, env, allowed_fact_batch, allowed_arguments_ids, candidate_args):
         #known_history = random.sample(self.replays[env.goal][1], 1)[0]#[0]
         # todo make replays with graph goals (history, action_history) tuples
-        known_history, known_action_history = self.replays[env.goal]
+        known_history, known_action_history, reward_history = self.replays[env.goal]
+
+        # print ("hist lens")
+        # print (len(known_history, len(known_action_history), len(reward_history)))
 
         allowed_fact_batch = allowed_fact_batch.to(self.device)
         fringe_pool = []
@@ -957,20 +972,23 @@ class GNNVanilla(Agent):
         steps = 0
 
 
+
+
         hist_graphs = graph_from_history(known_history, known_action_history)
 
-        for t in range(hist_graphs):
-            true_resulting_fringe = known_history[t + 1]
 
-            graph_t = known_history[t]
+        for t in range(len(hist_graphs)):
+            # true_resulting_fringe = known_history[t + 1]
 
-            nodes_t = nodes_list(graph_t, result=[])
+            # graph_t = known_history[t]
 
+            graph_t = hist_graphs[t]
+
+            nodes_t = graph_env.nodes_list(graph_t, result=[])
 
             goals_t = [g.goal for g in nodes_t]
 
-            tactic, chosen_goal = known_action_history[t]
-
+            chosen_goal, tactic = known_action_history[t]
 
             node_idx = goals_t.index(chosen_goal)
             chosen_node = nodes_t[node_idx]
@@ -978,14 +996,17 @@ class GNNVanilla(Agent):
 
             try:
                 #intialise scores for graph using score_net
-                target_representation, chosen_prob =  embed_goal_graph_replay(graph_t, goals_t, self.encoder_goal, self.context_net, chosen_node)
+                target_representation, chosen_prob =  embed_goal_graph_replay(graph_t, nodes_t, self.encoder_goal, self.context_net, chosen_node)
             except Exception as e:
                 print ("Goal selection error {}".format(e))
+                traceback.print_exc()
                 return ("Encoder error", str(e))
+
 
             fringe_pool.append(chosen_prob)
 
             target_goal = chosen_node.goal['polished']['goal']
+
 
 
             tac_input = target_representation.unsqueeze(0)
@@ -994,7 +1015,7 @@ class GNNVanilla(Agent):
             tac_probs = self.tac_net(tac_input)
             tac_m = Categorical(tac_probs)
 
-            true_tactic_text = true_resulting_fringe["by_tactic"]
+            true_tactic_text = tactic #true_resulting_fringe["by_tactic"]
 
             if true_tactic_text in no_arg_tactic:
                 true_tac_text = true_tactic_text
@@ -1206,8 +1227,11 @@ class GNNVanilla(Agent):
                     candidates = candidates.to(self.device)
 
                 arg_pool.append(arg_step_probs)
+
+
+
             try:
-                reward = true_resulting_fringe["reward"]
+                reward = reward_history[t]
                 #done = t + 2 == len(known_history)
             except:
                 print("Step exception raised.")
@@ -1315,6 +1339,7 @@ class Experiment_GNN:
                         try:
                             self.agent.replay_known_proof(env, allowed_fact_batch, allowed_arguments_ids, candidate_args)
                         except Exception as e:
+                            traceback.print_exc()
                             print (f"replay error {e}")
 
 
@@ -1322,8 +1347,9 @@ class Experiment_GNN:
                     if done:
                         prove_count += 1
 
-            # if self.train_mode:
-            #     self.agent.save_replays()
+            if self.train_mode:
+                self.agent.save_replays()
+                self.agent.save()
             #full_trace.append(iter_trace)
             #iter_times.append(time.time() - it_start)
             # proved_trace.append(prove_count)
@@ -1404,11 +1430,11 @@ class Experiment_GNN:
 def run_experiment():
 
     try:
-        agent = GNNVanilla(tactic_pool, train_mode=True)#, replay_dir="gnn_induct_agent_replays.json")
+        agent = GNNVanilla(tactic_pool, train_mode=True, replay_dir="gnn_agent_new_goal_replays.json")
 
         # agent.load()
 
-        exp_gnn = Experiment_GNN(agent, train_goals, compat_db, 1000, train_mode=True)
+        exp_gnn = Experiment_GNN(agent, train_goals[:10], compat_db, 1000, train_mode=True)
 
         exp_gnn.train()
 
@@ -1437,9 +1463,10 @@ def run_test():
 # todo Can also use this to train tactic and argument networks offline, especially with stored log probs for importance sampling correction
 # todo may even want separate GNN for embedding goals before action selection, then another GNN for goals for tactic/premise selection
 
+run_test()
 
 # run_experiment()
-run_test()
+# run_experiment()
 
 
 #sanity check encodings are similar between non-deterministic runs

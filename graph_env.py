@@ -1,8 +1,8 @@
 import itertools
 import networkx as nx
 import subprocess
-import plotly.graph_objects as go
-from igraph import Graph
+# import plotly.graph_objects as go
+# from igraph import Graph
 from random import sample
 from random import shuffle
 import pexpect
@@ -22,8 +22,8 @@ from copy import deepcopy
 
 # Updated environment for HOL4 based on graph goal structure (as opposed to fringes in original approach)
 
-HOLPATH = "/home/sean/Documents/hol/HOL/bin/hol --maxheap=256"
-# HOLPATH = "/home/sean/Documents/PhD/HOL4/HOL/bin/hol --maxheap=256"
+HOLPATH = "/home/sean/Documents/phd/hol/HOL/bin/hol --maxheap=256"
+# HOLPATH = "/home/sean/Documents//HOL4/HOL/bin/hol --maxheap=256"
 
 ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
 
@@ -315,7 +315,7 @@ class HolEnv():
         # environment history only needs to be list of current goals per step and their parent goals,
         #  as when combined with the action can fully reconstruct proof
 
-        self.history = [[(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals]]
+        self.history = [[g.goal for g in self.current_goals]]
         # self.history = [[(g.goal, None) for g in self.current_goals]]
         # action should just be goal_node and tactic. Then history can just be goal_node.goal and tactic
 
@@ -395,7 +395,8 @@ class HolEnv():
         self.current_goals = nodes_list(self.graph, result=[])
 
 
-        self.history = [[(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals]]
+        # self.history = [[(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals]]
+        self.history = [[g.goal for g in self.current_goals]]
         # self.history = [[(g.goal, None) for g in self.current_goals]]
         self.action_history = []
         self.subproofs = {}
@@ -592,7 +593,7 @@ class HolEnv():
 
         if (goal_node.goal, tactic) in self.action_history:
             self.action_history.append((action[0].goal, action[1]))
-            self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
+            self.history.append([g.goal for g in self.current_goals])
             reward = -1
 
             # print ("Duplicate action!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
@@ -614,7 +615,8 @@ class HolEnv():
 
         if d == "unexpected":
             self.action_history.append((action[0].goal, action[1]))
-            self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
+            self.history.append([g.goal for g in self.current_goals])
+            # self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
             reward = UNEXPECTED_REWARD
 
         elif d != "exception" and d != "timeout":
@@ -629,7 +631,7 @@ class HolEnv():
 
                     if goal_node == self.graph:
                         # print ("Goal proved")
-                        self.history.append([([], goal_node.goal)]) #goal_node.parent.goal if goal_node.parent is not None else None))
+                        self.history.append([[]]) #goal_node.parent.goal if goal_node.parent is not None else None))
                         return 5, True
 
                     reward = 0.2
@@ -651,12 +653,13 @@ class HolEnv():
                     # print (self.current_goals, len(self.current_goals))
                     if len(self.current_goals) == 1:
                         # print ("subgoal proved, proving original")
-                        self.history.append([([], goal_node.parent.goal if goal_node.parent is not None else None)])
+                        self.history.append([[]]) #goal_node.parent.goal if goal_node.parent is not None else None))
+                        # self.history.append([([], goal_node.parent.goal if goal_node.parent is not None else None)])
 
                         return 5, True
 
-                    hist = [(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals]
-                    hist.append(([], goal_node.goal))
+                    hist = [g.goal for g in self.current_goals]
+                    hist.append([])
                     self.history.append(hist)
                     # self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
 
@@ -666,7 +669,7 @@ class HolEnv():
                     if tactic in goal_node.children.keys():
                         # print ("tac duplicate")
                         # self.action_history.append(action self.action_history.append((action[0].goal, action[1]))
-                        self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
+                        self.history.append([g.goal for g in self.current_goals])
                         reward = -0.1
                         return reward, False
 
@@ -682,7 +685,8 @@ class HolEnv():
                         # print (f"{[d_['plain'] for d_ in d]}")
                         # self.action_history.append(action)
                         # self.action_history.append((action[0].goal, action[1]))
-                        self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
+                        self.history.append([g.goal for g in self.current_goals])
+                        # self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
                         reward = -0.1
                         return reward, False
 
@@ -694,7 +698,8 @@ class HolEnv():
                     if len(list(set(strd))) < len(strd):
                         # print ("HOL duplicate subgoal?")
                         # print (f"{[d_['plain'] for d_ in d]}")
-                        self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
+                        self.history.append([g.goal for g in self.current_goals])
+                        # self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
                         reward = -0.1
                         return reward, False
 
@@ -716,7 +721,8 @@ class HolEnv():
 
 
                     self.current_goals = nodes_list(self.graph, result=[])
-                    self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
+                    self.history.append([g.goal for g in self.current_goals])
+                    # self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
 
                     # print (f"Subgoals {[d_['plain'] for d_ in d]}")
                     # print (f"History {self.history}")
@@ -727,19 +733,22 @@ class HolEnv():
                 reward = -0.1
                 # self.action_history.append(action)
                 self.action_history.append((action[0].goal, action[1]))
-                self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
+                self.history.append([g.goal for g in self.current_goals])
+                # self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
                 # self.history = [(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals]
         else:
             if d == "timeout":
                 reward = -0.1
                 # self.action_history.append(action)
                 self.action_history.append((action[0].goal, action[1]))
-                self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
+                self.history.append([g.goal for g in self.current_goals])
+                # self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
                 # self.history = [(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals]
             else:
                 reward = -0.1
                 self.action_history.append((action[0].goal, action[1]))
-                self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
+                self.history.append([g.goal for g in self.current_goals])
+                # self.history.append([(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals])
                 # self.history = [(g.goal, g.parent.goal) if g.parent is not None else (g.goal, None) for g in self.current_goals]
 
         return reward, False
@@ -1198,16 +1207,6 @@ def split_by_fringe(goal_set, goal_scores, fringe_sizes):
     return gs, fs
 
 
-def verify_graph_proof(history, action_history):
-    final_step = history[-1]
-    final_action = action_history[-1]
-    assert final_step[0] == []
-
-    # find first occurence of (parent, goal) in history. Siblings will be
-    parent = final_step[1]
-
-    # want dictionary mapping goal : (tactic, subgoals) from history j
-
 def construct_new_map(history, action_history):
     map = {}
 
@@ -1229,19 +1228,19 @@ def construct_new_map(history, action_history):
 
                 if map[revert_assumptions(goal)] is None:
 
-                    map[revert_assumptions(goal)] = [(remove_duplicates(tactic), [g[0] for g in new_goals])]#[g[0] if g[0] != [] else [] for g in new_goals])]
+                    map[revert_assumptions(goal)] = [(remove_duplicates(tactic), [g for g in new_goals])]#[g[0] if g[0] != [] else [] for g in new_goals])]
 
                 else:
 
-                    map[revert_assumptions(goal)].append((remove_duplicates(tactic), [g[0] for g in new_goals]))#[g[0] if g[0] != [] else [] for g in new_goals]))
+                    map[revert_assumptions(goal)].append((remove_duplicates(tactic), [g for g in new_goals]))#[g[0] if g[0] != [] else [] for g in new_goals]))
             else:
-                map[revert_assumptions(goal)] = [(remove_duplicates(tactic), [g[0] for g in new_goals])]#[g[0] if g[0] != [] else [] for g in new_goals])]
+                map[revert_assumptions(goal)] = [(remove_duplicates(tactic), [g for g in new_goals])]#[g[0] if g[0] != [] else [] for g in new_goals])]
 
             # add empty entry for subgoals as well
             for new_goal in new_goals:
-                if new_goal[0] != []:
-                    if revert_assumptions(new_goal[0]) not in map.keys():
-                        map[revert_assumptions(new_goal[0])] = None
+                if new_goal != []:
+                    if revert_assumptions(new_goal) not in map.keys():
+                        map[revert_assumptions(new_goal)] = None
 
         # no new goals generated for goal
         else:
@@ -1293,7 +1292,7 @@ def construct_new_map(history, action_history):
 def graph_from_history(history, action_history):
     graphs = []
 
-    main_goal = history[0][0][0]
+    main_goal = history[0][0]
 
     initial_graph = GoalNode(main_goal)
 
@@ -1305,9 +1304,18 @@ def graph_from_history(history, action_history):
 
         chosen_goal, tactic = action_history[i - 1]
 
-        new_goals = [g[0] for g in history[i] if g not in history[i - 1]]
+        # print (f"Chosen: {chosen_goal}")
+
+
+        new_goals = [g for g in history[i] if g not in history[i - 1]]
+        # print (f"New goals: {new_goals}")
 
         current_goals = nodes_list(next_graph, result=[])
+
+        # print (f"Current goals {[g.goal for g in current_goals]}")
+
+
+        # goal_idx = current_goals.index(chosen_goal)
 
         goal_idx = [g.goal for g in current_goals].index(chosen_goal)
 
