@@ -1225,7 +1225,7 @@ def construct_new_map(history, action_history):
 
         # edge case when two goals proven in immediate succession
 
-        if [] in new_goals[id + 1] and [] in new_goals[id]:
+        if [] in history[id + 1] and [] in history[id]:
             new_goals = [[]]
 
         if new_goals:
