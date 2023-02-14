@@ -1222,6 +1222,12 @@ def construct_new_map(history, action_history):
         # print (goal['plain']['goal'], tactic)
         # print ([g[0]['plain']['goal'] if g[0] != [] else [] for g in new_goals])
 
+
+        # edge case when two goals proven in immediate succession
+
+        if [] in new_goals[id + 1] and [] in new_goals[id]:
+            new_goals = [[]]
+
         if new_goals:
 
             if revert_assumptions(goal) in map.keys():
@@ -1305,11 +1311,6 @@ def graph_from_history(history, action_history):
         chosen_goal, tactic = action_history[i - 1]
 
         # print (f"Chosen: {chosen_goal}")
-
-
-        new_goals = [g for g in history[i] if g not in history[i - 1]]
-        # print (f"New goals: {new_goals}")
-
         current_goals = nodes_list(next_graph, result=[])
 
         # print (f"Current goals {[g.goal for g in current_goals]}")
@@ -1320,6 +1321,19 @@ def graph_from_history(history, action_history):
         goal_idx = [g.goal for g in current_goals].index(chosen_goal)
 
         chosen_node = current_goals[goal_idx]
+
+        # edge case when two goals proven in immediate succession
+
+        if [] in history[i] and [] in history[i - 1]:
+            # proven goal/subgoal
+            chosen_node.prop_proved()
+            graphs.append(next_graph)
+            continue
+
+        new_goals = [g for g in history[i] if g not in history[i - 1]]
+        # print (f"New goals: {new_goals}")
+
+
 
         # no progress made
         if not new_goals:

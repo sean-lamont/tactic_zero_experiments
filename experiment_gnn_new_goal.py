@@ -836,7 +836,28 @@ class GNNVanilla(Agent):
 
                     print (f"Proof validation exception {e}")
 
-                    print (env.history, env.action_history)
+                    # print ("map")
+                    # for k,v in map:
+                    #     print (k, v)
+                    #     print ("")
+
+                    print ("history: ")
+                    for i in range(1, len(env.history)):
+                        action = env.action_history[i - 1]
+                        goals = env.history[i]
+                        new_goals = [g for g in env.history[i] if g not in env.history[i-1]]
+
+
+                        print (f"action: {action}")
+                        print (f"new goals {new_goals}")
+                        print (f"goals {goals}")
+
+                    graphs = graph_from_history(env.history, env.action_history)
+                    for graph in graphs:
+                        print ("graph: \n")
+                        graph._print()
+
+                    # print (env.history, env.action_history)
 
                     traceback.print_exc()
 
@@ -1449,7 +1470,7 @@ def run_test():
 
         agent.load()
 
-        exp_gnn = Experiment_GNN(agent, test_goals, compat_db, 1, train_mode=False)
+        exp_gnn = Experiment_GNN(agent, test_goals[80:], compat_db, 1, train_mode=False)
 
         exp_gnn.train()
 
@@ -1470,7 +1491,7 @@ run_test()
 
 
 #sanity check encodings are similar between non-deterministic runs
-# cs = torch.nn.CosineSimilarity(dim=1, eps=1e-08)
+# print ("history: ")s = torch.nn.CosineSimilarity(dim=1, eps=1e-08)
 
 # x = []
 # for i,k in enumerate(compat_db.keys()):
