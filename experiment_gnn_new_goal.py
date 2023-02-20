@@ -1,4 +1,5 @@
 import traceback
+from viz_net_torch import *
 import graph_env
 from datetime import datetime
 from torch_geometric.data import data
@@ -343,7 +344,7 @@ test_goals = valid_goals[int(0.8 * len(valid_goals)):]
 #     # print ("c")
 #     return representations
 
-updown = UpDown(agg_siblings=AggSiblings(), agg_children=AggChildren(), agg_context=AggContext())
+updown = UpDown(agg_siblings=AggSiblings(device), agg_children=AggChildren(), agg_context=AggContext(device), device=device)
 
 def get_best_goal(goals):
     # take product of context and goal scores for now
@@ -407,9 +408,12 @@ def embed_goal_graph_replay(main_goal, graph, encoder, score_net, chosen_goal):
 
     # run up-down algorithm on graph
 
+    # todo not sure if this correctly generates autograd graph?
     updown.up_step(main_goal)
     updown.down_step(main_goal)
+
     # take product of context and goal scores for now
+
     for goal in graph:
         goal.final_score = goal.agg_score * goal.context_score
 
@@ -445,42 +449,75 @@ def embed_goal_graph(main_goal, graph, encoder, score_net):
 
     scores = score_net(representations).squeeze(-1).squeeze(-1)
 
-    #convert into probabilities for now
-    scores = torch.sigmoid(scores)
+    try:
+        #convert into probabilities for now
+        scores = torch.sigmoid(scores)
 
-    scores = torch.clamp(scores, min = 1e-10)
+        scores = torch.clamp(scores, min = 1e-10)
 
-    for i in range(len(graph)):
-        graph[i].raw_score = scores[i]
+        for i in range(len(graph)):
+            graph[i].raw_score = scores[i]
 
-    # run up-down algorithm on graph
+        # run up-down algorithm on graph
 
-    updown.up_step(main_goal)
-    updown.down_step(main_goal)
-    # take product of context and goal scores for now
-    for goal in graph:
-        goal.final_score = goal.agg_score * goal.context_score
+        # if len(graph) > 3:
+        #     print ("goal graph before\n")
+        #     main_goal._print_with_scores()
+
+        updown.up_step(main_goal)
+
+        # if len(graph) > 3:
+        #     print ("goal graph after up\n")
+        #     main_goal._print_with_scores()
+
+        updown.down_step(main_goal)
+
+        # take product of context and goal scores for now
+        for goal in graph:
+            goal.final_score = goal.agg_score * goal.context_score
 
 
-    goal_scores = [goal.final_score for goal in graph]
+        # if len(graph) > 3:
+        #     print ("goal graph after down: \n")
+        #     main_goal._print_with_scores()
+            # print (f"\n raw scores: {tmp1}")
+            # print (f"\n agg scores: {tmp2}")
+            # print (f"\n context scores: {tmp4}")
 
-    # softmax only if scores aren't already probabilities
-    # goal_probs = F.softmax(goal_scores, dim=0)
+        goal_scores = [goal.final_score.unsqueeze(0) for goal in graph]
 
-    goal_probs = torch.FloatTensor(goal_scores)
+        goal_probs = torch.cat(goal_scores, dim=0)
 
-    goal_m = Categorical(goal_probs)
+        # softmax only if scores aren't already probabilities
+        # goal_probs = F.softmax(goal_scores, dim=0)
 
-    # index for best node
-    goal = goal_m.sample()
+        # goal_probs = torch.FloatTensor(goal_scores)
 
-    # returns the best node starting from the chosen up-down node
-    best_subgoal = select_best_subgoal(graph[goal])
 
-    # fringe_pool.append(goal_m.log_prob(goal))
-    best_idx = graph.index(best_subgoal)
 
-    return best_subgoal, representations[best_idx], goal_m.log_prob(torch.tensor(best_idx))
+
+        goal_m = Categorical(goal_probs)
+
+        # index for best node
+        goal = goal_m.sample()
+
+        # returns the best node starting from the chosen up-down node
+        best_subgoal = select_best_subgoal(graph[goal])
+
+        # fringe_pool.append(goal_m.log_prob(goal))
+        best_idx = graph.index(best_subgoal)
+
+        goal_prob = goal_m.log_prob(torch.tensor(best_idx).to(device))
+    except Exception as e:
+        print ("nan bs" + 80 * "!")
+        print (f"reps {representations}")
+        print (f"scores {scores}")
+        print (f"goal scores {goal_scores}")
+        print (f"goal probs {goal_probs}")
+
+        traceback.print_exc()
+
+    return best_subgoal, representations[best_idx], goal_prob
     # return graph[goal], representations[goal]
 
 
@@ -521,8 +558,11 @@ class GNNVanilla(Agent):
 
 
         if replay_dir:
-            with open(replay_dir) as f:
-                self.replays = json.load(f)
+            # with open(replay_dir) as f:
+            #     self.replays = json.load(f)
+
+            with open(replay_dir, "rb") as f:
+                self.replays = pickle.load(f)
         else:
             self.replays = {}
 
@@ -600,6 +640,10 @@ class GNNVanilla(Agent):
                 target_goal_node, target_representation, goal_prob = embed_goal_graph(env.graph, env.current_goals, self.encoder_goal, self.context_net)
             except Exception as e:
                 print ("Goal selection error {}".format(e))
+                print (f"env graph \n")
+                env.graph._print()
+                print (f"env goals {[g.goal for g in env.current_goals]}")
+                traceback.print_exc()
                 return ("Encoder error", str(e))
 
 
@@ -834,32 +878,32 @@ class GNNVanilla(Agent):
                     proof_len, proof = find_best_proof(g_, map)
                 except Exception as e:
 
+
+                    # todo store cases in file
+                    # todo when arg enclosed in '', just filter it out?
+
                     print (f"Proof validation exception {e}")
+                    print ("\n\n\n\n")
+                    break
 
-                    # print ("map")
-                    # for k,v in map:
-                    #     print (k, v)
-                    #     print ("")
-
-                    print ("history: ")
-                    for i in range(1, len(env.history)):
-                        action = env.action_history[i - 1]
-                        goals = env.history[i]
-                        new_goals = [g for g in env.history[i] if g not in env.history[i-1]]
-
-
-                        print (f"action: {action}")
-                        print (f"new goals {new_goals}")
-                        print (f"goals {goals}")
-
-                    graphs = graph_from_history(env.history, env.action_history)
-                    for graph in graphs:
-                        print ("graph: \n")
-                        graph._print()
-
-                    # print (env.history, env.action_history)
-
-                    traceback.print_exc()
+                    # print ("history: ")
+                    # for i in range(1, len(env.history)):
+                    #     action = env.action_history[i - 1]
+                    #     goals = env.history[i]
+                    #     new_goals = [g for g in env.history[i] if g not in env.history[i-1]]
+                    #
+                    #
+                    #     print (f"action: {action}")
+                    #     print (f"new goals {new_goals}")
+                    #     print (f"goals {goals}")
+                    #
+                    # graphs = graph_from_history(env.history, env.action_history)
+                    # for graph in graphs:
+                    #     print ("graph: \n")
+                    #     graph._print()
+                    #
+                    #
+                    # traceback.print_exc()
 
                 # print (proof_len, proof)
                 # # print (g_)
@@ -871,6 +915,10 @@ class GNNVanilla(Agent):
 
                 if data != []:
                     print ("replay error" + 40 * "!!")
+                    # todo store cases in file
+
+                    # todo break here if not valid?
+                    break
 
 
                 # print ("Graphs \n")
@@ -882,17 +930,21 @@ class GNNVanilla(Agent):
 
                 #if proved, add to successful replays for this goal
                 if env.goal in self.replays.keys():
+
                     #if proof done in less steps than before, add to dict
-                    if steps < len(self.replays[env.goal][0]):
-                        print ("adding to replay")
-                        # print (env.history)
-                        self.replays[env.goal] = (env.history, env.action_history, reward_pool)
+                    # if steps < len(self.replays[env.goal][0]):
+                    #     print ("adding to replay")
+                    #     # print (env.history)
+                    #     self.replays[env.goal] = (env.history, env.action_history, reward_pool, (fringe_pool, tac_pool, arg_pool))
+
+                    self.replays[env.goal].append((env.history, env.action_history, reward_pool, (fringe_pool, tac_pool, arg_pool)))
+
                 else:
 
                     print ("Initial add to db...")
                     # print (env.history)
                     if env.history is not None:
-                        self.replays[env.goal] = (env.history, env.action_history, reward_pool)
+                        self.replays[env.goal] = [(env.history, env.action_history, reward_pool, (fringe_pool, tac_pool, arg_pool))]
 
                     else:
                         print ("history is none.............")
@@ -951,11 +1003,27 @@ class GNNVanilla(Agent):
             reward = reward_pool[i]
             
             fringe_loss = -fringe_pool[i] * (reward)
+
+            # print ("Trying graph: \n\n")
+            # g = make_dot(fringe_loss)
+            # g.view()
+
             arg_loss = -torch.sum(torch.stack(arg_pool[i])) * (reward)
+
             tac_loss = -tac_pool[i] * (reward)
-            
+
+            # if i == 0:
+            #     print ("Trying graph: \n\n")
+            #     g = make_dot(arg_loss)
+            #     g.view()
+
             loss = fringe_loss + tac_loss + arg_loss
             total_loss += loss
+
+
+        # print ("Trying graph: \n\n")
+        # g = make_dot(fringe_loss)
+        # g.view()
 
         total_loss.backward()
 
@@ -974,8 +1042,15 @@ class GNNVanilla(Agent):
 
     def replay_known_proof(self, env, allowed_fact_batch, allowed_arguments_ids, candidate_args):
         #known_history = random.sample(self.replays[env.goal][1], 1)[0]#[0]
-        # todo make replays with graph goals (history, action_history) tuples
-        known_history, known_action_history, reward_history = self.replays[env.goal]
+
+        # always replay shortest found proof for now
+        reps = self.replays[env.goal]
+        rep_lens = [len(rep[0]) for rep in reps]
+        min_rep = reps[rep_lens.index(min(rep_lens))]
+
+        known_history, known_action_history, reward_history, _ = min_rep
+
+        # known_history, known_action_history, reward_history, _ = self.replays[env.goal][0]
 
         # print ("hist lens")
         # print (len(known_history, len(known_action_history), len(reward_history)))
@@ -1037,6 +1112,7 @@ class GNNVanilla(Agent):
             tac_m = Categorical(tac_probs)
 
             true_tactic_text = tactic #true_resulting_fringe["by_tactic"]
+            # print (true_tactic_text)
 
             if true_tactic_text in no_arg_tactic:
                 true_tac_text = true_tactic_text
@@ -1223,7 +1299,7 @@ class GNNVanilla(Agent):
                         name_parser = true_args_text.split(".")
                         theory_name = name_parser[0][:-6]  # get rid of the "Theory" substring
                         theorem_name = name_parser[1]
-                        true_arg_exp = reverse_database[(theory_name, theorem_name)]
+                        true_arg_exp = reverse_database[(theory_name.strip("\'").strip("\""), theorem_name.strip("\'").strip("\""))]
                     true_arg = torch.tensor(candidate_args.index(true_arg_exp))
                     true_arg = true_arg.to(self.device)
 
@@ -1283,8 +1359,11 @@ class GNNVanilla(Agent):
         return
 
     def save_replays(self):
-        with open("gnn_agent_new_goal_replays.json", "w") as f:
-            json.dump(self.replays, f)
+        # with open("gnn_agent_new_goal_replays.json", "w") as f:
+        #     json.dump(self.replays, f)
+
+        with open("gnn_agent_new_goal_replays.pk", "wb") as f:
+            pickle.dump(self.replays, f)
 
 
 class Experiment_GNN:
@@ -1336,7 +1415,7 @@ class Experiment_GNN:
                 #agent run returns (error_msg, details) if error, larger tuple otherwise
                 if len(result) == 2:
                     #agent_errors.append((result, i))
-                    pass
+                    continue
 
                 else:
                     trace, steps, done, goal_time, reward_total, replay_flag = result
@@ -1375,22 +1454,22 @@ class Experiment_GNN:
             #iter_times.append(time.time() - it_start)
             # proved_trace.append(prove_count)
 
-            # if self.train_mode:
-            #     date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
-            #
-            #
-            #     with open(f"traces/gnn_induction_agent_reward_trace_{date}.pk", "wb") as f:
-            #         pickle.dump(reward_trace, f)
-            #
-            #     with open("traces/gnn_model_induction_errors.pk", "wb") as f:
-            #         pickle.dump((env_errors, agent_errors), f)
-            #
-            #     with open(f"traces/gnn_model_induction_proved_{date}.pk", "wb") as f:
-            #         pickle.dump(proved_trace, f)
+            if self.train_mode:
+                date = datetime.today().strftime('%Y-%m-%d %H:%M:%S')
+
+
+                with open(f"traces/graph_goal/gnn_graph_goal_agent_reward_trace_{date}.pk", "wb") as f:
+                    pickle.dump(reward_trace, f)
+
+                with open("traces/graph_goal/gnn_graph_agent_model_errors.pk", "wb") as f:
+                    pickle.dump((env_errors, agent_errors), f)
+
+                with open(f"traces/graph_goal/gnn_graph_agent_proved_{date}.pk", "wb") as f:
+                    pickle.dump(proved_trace, f)
 
 
                 #save parameters every iteration
-                # self.agent.save()
+                self.agent.save()
 
             print (f"done {prove_count}")
         return #full_trace, env_errors, agent_errors, iter_times
@@ -1451,11 +1530,11 @@ class Experiment_GNN:
 def run_experiment():
 
     try:
-        agent = GNNVanilla(tactic_pool, train_mode=True, replay_dir="gnn_agent_new_goal_replays.json")
+        agent = GNNVanilla(tactic_pool, train_mode=True)#, replay_dir="gnn_agent_new_goal_replays.pk")
 
         # agent.load()
 
-        exp_gnn = Experiment_GNN(agent, train_goals[:10], compat_db, 1000, train_mode=True)
+        exp_gnn = Experiment_GNN(agent, train_goals[400:], compat_db, 1000, train_mode=True)
 
         exp_gnn.train()
 
@@ -1470,7 +1549,7 @@ def run_test():
 
         agent.load()
 
-        exp_gnn = Experiment_GNN(agent, test_goals[80:], compat_db, 1, train_mode=False)
+        exp_gnn = Experiment_GNN(agent, test_goals, compat_db, 1, train_mode=False)
 
         exp_gnn.train()
 
@@ -1484,9 +1563,9 @@ def run_test():
 # todo Can also use this to train tactic and argument networks offline, especially with stored log probs for importance sampling correction
 # todo may even want separate GNN for embedding goals before action selection, then another GNN for goals for tactic/premise selection
 
-run_test()
+# run_test()
 
-# run_experiment()
+run_experiment()
 # run_experiment()
 
 

@@ -22,7 +22,8 @@ from copy import deepcopy
 
 # Updated environment for HOL4 based on graph goal structure (as opposed to fringes in original approach)
 
-HOLPATH = "/home/sean/Documents/phd/hol/HOL/bin/hol --maxheap=256"
+HOLPATH = "/home/sean/Documents/hol/HOL/bin/hol --maxheap=256"
+# HOLPATH = "/home/sean/Documents/phd/hol/HOL/bin/hol --maxheap=256"
 # HOLPATH = "/home/sean/Documents//HOL4/HOL/bin/hol --maxheap=256"
 
 ansi_escape = re.compile(r'\x1B(?:[@-Z\\-_]|\[[0-?]*[ -/]*[@-~])')
@@ -116,34 +117,50 @@ class AggChildren(nn.Module):
 
 
 class AggContext(nn.Module):
-    def __init__(self):
+    def __init__(self, device):
         super().__init__()
+        self.device = device
 
     def forward(self, x, siblings):
+        final_score = torch.tensor(1.).to(self.device)
+        final_score = x * final_score
+
+
         # contexts = torch.FloatTensor([sib.raw_score for sib in siblings])
-        sib_scores = [sib.agg_score for sib in siblings]
-        final_score = x
-        for score in sib_scores:
-            final_score *= score
+        # sib_scores = [sib.agg_score for sib in siblings]
+        # for score in sib_scores:
+        #     final_score *= score
+
+        for sibling in siblings:
+            final_score *= sibling.agg_score
+
         return final_score
 
 class AggSiblings(nn.Module):
-    def __init__(self):
+    def __init__(self, device):
         super().__init__()
+        self.device = device
 
     def forward(self, siblings):
         # sib_scores = torch.FloatTensor([sib.raw_score for sib in x])
-        score = 1
-        scores = [sibling.agg_score for sibling in siblings]
-        for sib_score in scores:
-            score *= sib_score
+        score = torch.tensor(1.).to(self.device)
+
+        # scores = [sibling.agg_score for sibling in siblings]
+        # for sib_score in scores:
+        #     score *= sib_score
+
+
+        for sibling in siblings:
+            score *= sibling.agg_score
+
         return score
 
 class UpDown():
-    def __init__(self, agg_siblings, agg_children, agg_context):
-        self.agg_siblings = agg_siblings
-        self.agg_children = agg_children
-        self.agg_context = agg_context
+    def __init__(self, agg_siblings, agg_children, agg_context, device):
+        self.device = device
+        self.agg_siblings = agg_siblings.to(device)
+        self.agg_children = agg_children.to(device)
+        self.agg_context = agg_context.to(device)
 
     # when proved, remove from graph
     def up_step(self, graph):
@@ -174,14 +191,19 @@ class UpDown():
 
     def down_step(self, graph, root=True):
         if root:
-            graph.context_score = 1
+            graph.context_score = torch.tensor(1.).to(self.device)
 
         if graph.children != {}:
             for tac, val in graph.children.items():
                 siblings = val[1]
                 for sibling in siblings:
                     # print ("context")
+                    # print (f"down siblings: {siblings}")
+                    # print (f"others {sibling, list(set(siblings) - {sibling})}")
+                    # print (f"context before {sibling.context_score}")
                     sibling.context_score = self.agg_context(graph.context_score, list(set(siblings) - {sibling}))
+                    # print ("context after ")
+                    # print (sibling.context_score)
                     self.down_step(sibling, root=False)
         return
 
@@ -195,9 +217,10 @@ class GoalNode():
         # children in format {tac : [subgoals]}
         self.children = {}
 
-        self.raw_score = 0.
-        self.context_score = 0.
-        self.final_score = 0.
+        self.raw_score = torch.tensor(0.)
+        self.agg_score = torch.tensor(0.)
+        self.context_score = torch.tensor(0.)
+        self.final_score = torch.tensor(0.)
 
     def prop_proved(self):
         # remove self from parent and
@@ -231,6 +254,16 @@ class GoalNode():
                 for goal in self.children[child][1]:
                     goal._print(depth + 1)
 
+    def _print_with_scores(self, depth=1):
+        print(depth * "--- " + self.goal["plain"]["goal"])
+        if self.from_tac:
+            print (f"Tac: " + self.from_tac+ " Parent: " + self.parent.goal["plain"]["goal"] + f" scores {self.raw_score, self.agg_score, self.context_score}")
+        else:
+            print (f"scores: {self.raw_score, self.agg_score, self.context_score}")
+        if len(self.children.keys()) > 0:
+            for child in self.children.keys():
+                for goal in self.children[child][1]:
+                    goal._print_with_scores(depth + 1)
 
 # Return set of all unique nodes in a graph
 def nodes_list(g, result=[]):
@@ -1366,6 +1399,8 @@ def graph_from_history(history, action_history):
 
 
 
+# todo add and return best history with this corresponding to the found proof
+#
 def find_best_proof(goal, map):
     found_proofs = []
 
